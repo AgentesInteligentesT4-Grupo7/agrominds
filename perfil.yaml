@@ -1,0 +1,43 @@
+# Manifesto do perfil "agrominds" (spec profiles-modules RF-03).
+# Perfis são só conteúdo: nada aqui é executado.
+nome: agrominds
+versao: 0.1.0
+descricao: Assistente de IA para o agronegócio do Grupo 7 (Agentes Inteligentes T4). Foco a definir.
+requer:
+  tocador: ">=1.0"
+
+identidade:
+  nome: AgroMinds
+  emoji: 🌱
+  dono: Grupo 7
+  proposito: assistente de IA para o agronegócio
+  instrucoes: |
+    Você ajuda produtores rurais, técnicos e estudantes de agronomia.
+    Fale em português simples, como num bate-papo no campo, sem jargão desnecessário.
+    Quando a resposta depender de região, cultura ou época do ano, pergunte antes de responder.
+    Não invente números (doses, preços, previsões): quando não tiver a informação, diga e sugira onde conferir.
+
+# Módulos do tocador que este perfil liga:
+#   arquivos     Ferramentas de arquivos no workspace (criar, ler, listar)
+#   voz          Mensagens de voz: transcrição (Whisper) e respostas em áudio (Kokoro/Edge)
+#   voz-clonada  Clonagem de voz (Chatterbox): /minhavoz, /falar e skill voz-clonada
+#   refinamento  Raciocínio: criador ↔ crítico, análise em etapas, debate entre agentes e criador de prompts
+#   http         Ferramentas HTTP declaradas pelo perfil em ferramentas/*.yaml (APIs REST, sem código)
+#   pesquisa-web Pesquisa na internet, leitura de páginas e notícias (SearXNG/DuckDuckGo, Google News)
+#   anexos       Imagens e documentos enviados: visão, OCR, biblioteca com busca (listar_anexos, ler_anexo...)
+#   imagens      Geração de imagens na GPU (ComfyUI + SDXL): ilustração, HQ, anime e mangá
+#   conhecimento Base de conhecimento (RAG): documentos da fita em conhecimento/, busca híbrida e citações
+modulos:
+  arquivos: {}
+  anexos: {}
+  pesquisa-web: {}
+  voz: {}
+
+# Canais: telegram, terminal, web (chat no navegador). O telegram precisa de um bot próprio no .env.
+canais: [terminal, web]
+
+# publico | pessoal | local (local = só modelos na sua GPU)
+privacidade: local
+
+# Variáveis que o .env do perfil precisa ter (o instalador avisa as que faltam)
+variaveis: {}
