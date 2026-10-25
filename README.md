@@ -29,7 +29,7 @@ Ideias levantadas, cada uma vira skills ou ferramentas desta fita:
 
 ## Arquivos
 
-- `perfil.yaml`: identidade, módulos, canais e privacidade (`local`: só modelos na própria GPU).
+- `perfil.yaml`: identidade, módulos, canais e privacidade (`publico`: o orquestrador escolhe entre os modelos gratuitos).
 - `skills/`: skills próprias (sobrescrevem as dos módulos com o mesmo nome).
 - `ferramentas/`: ferramentas HTTP declarativas (`exemplo.yaml.off` mostra o formato).
 - `.env`: segredos, fora do Git.
