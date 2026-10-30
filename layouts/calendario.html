@@ -15,13 +15,14 @@ const EXEMPLO = {
   titulo: 'Calendário de plantio',
   subtitulo: 'Goiânia/GO · zoneamento agrícola (ZARC) 2026/2027',
   hoje: 30,
-  destaque: { titulo: 'Dá para plantar agora', agora: ['Soja', 'Milho (1ª safra)', 'Feijão (1ª safra)', 'Mandioca'], logo: [] },
+  destaque: { titulo: 'Dá para plantar agora', agora: ['Cebola', 'Mandioca', 'Milho (1ª safra)', 'Soja'], logo: [] },
   linhas: [
     { nome: 'Soja', risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20], minha: true, sua: { de: 25, ate: 36 } },
     { nome: 'Milho', epoca: '1ª safra', risco: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 20, 20] },
     { nome: 'Milho', epoca: '2ª safra (safrinha)', risco: [20, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
     { nome: 'Cebola', manejo: 'Irrigado', risco: [0, 0, 0, 0, 0, 0, 0, 40, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 40, 0, 0, 0, 0, 0, 40, 20, 30, 40, 0, 0, 0, 0] },
-    { nome: 'Alface', semDado: 'sem_zoneamento', risco: [] },
+    { nome: 'Alface', semDado: 'sem_zoneamento', risco: [], pedida: true },
+    { nome: 'Feijão', epoca: '2ª safra', risco: [0, 0, 0, 0, 0, 0, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], pedida: true },
   ],
   rodape: 'Fonte: ZARC (MAPA/Embrapa), solo de textura média, melhor caso entre os ciclos · confira a portaria do seu município',
 };
@@ -30,7 +31,11 @@ const EXEMPLO = {
 const ORDEM = Array.from({ length: 36 }, (_, i) => ((i + 18) % 36) + 1);
 const MESES = ['jul', 'ago', 'set', 'out', 'nov', 'dez', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun'];
 const ESTACOES = [['inverno', 2], ['primavera', 3], ['verão', 3], ['outono', 3], ['inverno', 1]];
-const SEM_DADO = { sem_zoneamento: 'sem zoneamento oficial para esta planta', nao_indicado: 'o ZARC não indica plantio no seu município' };
+const SEM_DADO = {
+  sem_zoneamento: 'sem zoneamento oficial para esta planta',
+  nao_indicado: 'o ZARC não indica plantio no seu município',
+  fora_do_catalogo: 'não está no catálogo do bot (sem dado oficial)',
+};
 
 function dentro(d, de, ate) {
   return de <= ate ? d >= de && d <= ate : d >= de || d <= ate;
@@ -64,8 +69,8 @@ desenhar(window.DADOS ?? EXEMPLO, (d) => `
         </thead>
         <tbody>
           ${d.linhas.map((l) => `
-            <tr class="${l.minha ? 'minha' : ''}">
-              <td class="nome">${l.minha ? '★ ' : ''}${esc(l.nome)}${l.epoca || l.manejo === 'Irrigado' ? `<small>${esc([l.epoca, l.manejo === 'Irrigado' ? 'irrigado' : ''].filter(Boolean).join(' · '))}</small>` : ''}</td>
+            <tr class="${l.minha ? 'minha' : ''}${l.pedida ? ' pedida' : ''}">
+              <td class="nome">${l.minha ? '★ ' : ''}${esc(l.nome)}${l.epoca || l.manejo === 'Irrigado' || l.pedida ? `<small>${esc([l.epoca, l.manejo === 'Irrigado' ? 'irrigado' : '', l.pedida ? 'você pediu' : ''].filter(Boolean).join(' · '))}</small>` : ''}</td>
               ${l.semDado
                 ? `<td class="semdado" colspan="36">${SEM_DADO[l.semDado]}</td>`
                 : ORDEM.map((dec, i) => {

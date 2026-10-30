@@ -5,10 +5,10 @@ import type { Layouts } from './Layouts.js';
 import { legenda, mensagemBoletim, mensagemClima, tituloBoletim } from './Mensagens.js';
 import type { Notificador } from './Notificador.js';
 import type { OpenMeteo, Previsao } from './OpenMeteo.js';
-import { type LinhaCalendario, type Planta, calendario, lavourasAtuais, municipioDoLugar, nomeDaPlanta, resumoPlantas, textoCalendario } from './Plantas.js';
+import { type LinhaCalendario, type Planta, calendario, lavourasAtuais, municipioDoLugar, nomeDaPlanta, resumoPlantas, sugestoes, textoCalendario } from './Plantas.js';
 import { type Cultura, type Regra, type Resultado, avaliarTodas } from './Regras.js';
 import { type OpcaoPeriodo, dadosCalendario, dadosPlantas, dadosPrevisao, dadosTempo, periodoDe, textoPrevisao } from './Visual.js';
-import type { Zarc } from './Zarc.js';
+import { type Zarc, chaveDeNome } from './Zarc.js';
 
 /** O que as partes da fita (Telegram, notificações, ferramentas, painel) dividem. */
 export interface Contexto {
@@ -85,7 +85,7 @@ export async function previsaoDoPeriodo(c: Base, userId: string, opcao: OpcaoPer
 }
 
 /** Calendário do município: das plantas da pessoa, ou (sem plantas, ou `todas`) do catálogo inteiro ou de um grupo. */
-export function linhasDoCalendario(c: Base, userId: string, opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[] } = {}): { lugar: Lugar; linhas: LinhaCalendario[]; municipio: boolean } {
+export function linhasDoCalendario(c: Base, userId: string, opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[] } = {}): { lugar: Lugar; linhas: LinhaCalendario[]; geocodigo: string | undefined } {
   const lugar = lugarOuErro(c, userId);
   const municipio = municipioDoLugar(c.zarc, lugar);
   const minhas = c.banco.lavouras(userId);
@@ -95,24 +95,78 @@ export function linhasDoCalendario(c: Base, userId: string, opcoes: { todas?: bo
     : opcoes.todas || opcoes.grupo || !minhas.length
       ? catalogo.filter((p) => p.zarc.length && (!opcoes.grupo || p.grupo === opcoes.grupo))
       : minhas.map((l) => catalogo.find((p) => p.id === l.planta)).filter((p): p is Planta => Boolean(p));
-  return { lugar, linhas: calendario(c.zarc, municipio?.geocodigo, escolhidas, minhas), municipio: Boolean(municipio) };
+  return { lugar, linhas: calendario(c.zarc, municipio?.geocodigo, escolhidas, minhas), geocodigo: municipio?.geocodigo };
 }
 
-function avisoSemZarc(c: Base, municipio: boolean): string | undefined {
+/** Planta do catálogo pelo id ou pelo nome, sem ligar para acento e maiúscula ("feijão", "Feijao", "batata-doce"). */
+export function acharPlanta(c: Base, termo: string): Planta | undefined {
+  const k = chaveDeNome(termo);
+  if (!k) return undefined;
+  const catalogo = c.plantas();
+  return (
+    catalogo.find((p) => chaveDeNome(p.id) === k || chaveDeNome(p.nome) === k) ??
+    // "mandioca" acha "Mandioca"; "cana" acha "Cana-de-açúcar"; "caupi" acha "Feijão-de-corda (caupi)"
+    catalogo.find((p) => k.length >= 4 && (chaveDeNome(p.nome).startsWith(k) || chaveDeNome(p.nome).includes(k)))
+  );
+}
+
+/** "feijão, alface e couve" ou "e o feijão?" → ["feijão", "alface", "couve"] (o que a pessoa escreveu depois do comando). */
+export function nomesPedidos(texto: string): string[] {
+  return texto
+    .split(/[,;?!.]|\s+e\s+/i)
+    .map((t) => t.trim().replace(/^((e|o|a|os|as|de|do|da)\s+)+/i, '').trim())
+    .filter(Boolean);
+}
+
+/** Nome em ordem alfabética (português); as épocas da mesma planta ficam juntas, na ordem do catálogo. */
+function emOrdemAlfabetica<T extends { nome: string }>(linhas: T[]): T[] {
+  return [...linhas].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+function avisoSemZarc(c: Base, geocodigo: string | undefined): string | undefined {
   if (c.zarc.vazio()) return 'O calendário oficial (ZARC) ainda não foi baixado: ele chega na primeira atualização da fita (ou com "npm run fita -- agrominds zarc").';
-  if (!municipio) return 'Não achei o seu município no zoneamento: mande a localização de novo (com o nome da cidade ligado) para eu ver o calendário.';
+  if (!geocodigo) return 'Não achei o seu município no zoneamento: mande a localização de novo (com o nome da cidade ligado) para eu ver o calendário.';
   return undefined;
 }
 
-/** /calendario e /plantar: o layout do calendário (com o que dá para plantar agora em destaque). */
-export async function calendarioDe(c: Base, userId: string, opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[]; sugerir?: boolean } = {}, agora = new Date()): Promise<Omit<Saida, 'resultados'>> {
+/**
+ * /calendario e /plantar: o layout do calendário (com o que dá para plantar agora em destaque, em ordem alfabética).
+ * `incluir`: plantas que a pessoa pediu (id ou nome) e que entram a mais na tabela, marcadas "você pediu", mesmo
+ * fora de época ou sem dado oficial.
+ */
+export async function calendarioDe(
+  c: Base,
+  userId: string,
+  opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[]; sugerir?: boolean; incluir?: string[] } = {},
+  agora = new Date(),
+): Promise<Omit<Saida, 'resultados'>> {
   const hoje = hojeLocal(agora);
-  const { lugar, linhas, municipio } = linhasDoCalendario(c, userId, opcoes);
-  const aviso = avisoSemZarc(c, municipio);
+  const { lugar, linhas, geocodigo } = linhasDoCalendario(c, userId, opcoes);
+  const aviso = avisoSemZarc(c, geocodigo);
   const titulo = opcoes.sugerir ? `O que plantar agora${opcoes.grupo === 'horta' ? ' na horta' : opcoes.grupo === 'lavoura' ? ' na lavoura' : ''}` : 'Calendário de plantio';
   const safra = c.zarc.arquivos().find((a) => a.arquivo === 'safra')?.nome.match(/\d{4}\/\d{4}/)?.[0];
-  // Nas sugestões, só o que tem janela no município (o resto é ruído).
-  const mostrar = opcoes.sugerir ? linhas.filter((l) => !l.semDado) : linhas;
+  // Nas sugestões, a tabela mostra só o que está na lista (aberto agora ou abrindo logo), em ordem alfabética.
+  let mostrar = linhas;
+  if (opcoes.sugerir) {
+    const s = sugestoes(linhas, hoje);
+    const naLista = new Set([...s.agora, ...s.logo].map((l) => l.planta));
+    mostrar = emOrdemAlfabetica(linhas.filter((l) => naLista.has(l.planta) && !l.semDado));
+  }
+  // O que a pessoa pediu e não está na tabela vem a mais, no fim.
+  const pedidas: Planta[] = [];
+  const desconhecidas: string[] = [];
+  for (const termo of opcoes.incluir ?? []) {
+    const p = acharPlanta(c, termo);
+    if (!p) desconhecidas.push(termo);
+    else if (!mostrar.some((l) => l.planta === p.id) && !pedidas.includes(p)) pedidas.push(p);
+  }
+  // "Você pediu" só faz sentido quando a planta entra a mais numa lista (nas sugestões ou no calendário da pessoa).
+  const marcar = opcoes.sugerir === true || mostrar.length > 0;
+  mostrar = [
+    ...mostrar,
+    ...calendario(c.zarc, geocodigo, pedidas, c.banco.lavouras(userId)).map((l) => ({ ...l, ...(marcar ? { pedida: true } : {}) })),
+    ...desconhecidas.map((nome) => ({ planta: chaveDeNome(nome), nome: nome[0]!.toUpperCase() + nome.slice(1), risco: new Array<number>(36).fill(0), semDado: 'fora_do_catalogo' as const, ...(marcar ? { pedida: true } : {}) })),
+  ];
   const dados = dadosCalendario(lugar, mostrar, hoje, { titulo, ...(safra ? { safra } : {}), destaque: opcoes.sugerir === true, ...(aviso ? { vazio: aviso } : {}) });
   const texto = [`📅 ${titulo} · ${lugar.nome}`, '', ...(aviso ? [aviso] : textoCalendario(mostrar)), '', 'Fonte: ZARC (MAPA/Embrapa)'].join('\n');
   const destaque = dados.destaque ? `\nAgora: ${dados.destaque.agora.join(', ') || 'nada com janela aberta'}` : '';

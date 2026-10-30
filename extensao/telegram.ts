@@ -1,7 +1,7 @@
 import type { ModoEnvio } from './Banco.js';
 import type { TelegramBotao, TelegramCtx, TelegramResposta } from './k7.js';
 import { GRUPOS, type Planta, somarDias } from './Plantas.js';
-import { type Contexto, calendarioDe, hojeLocal, minhasPlantas, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
+import { type Contexto, calendarioDe, hojeLocal, minhasPlantas, nomesPedidos, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
 import { PERIODOS, ehPeriodo } from './Visual.js';
 
 export type { Contexto } from './Servicos.js';
@@ -245,14 +245,14 @@ export function registrarTelegram(c: Contexto): void {
     );
   });
 
-  k7.telegram.comando('calendario', 'Época de plantio na sua cidade (zoneamento oficial)', async (ctx) => {
+  k7.telegram.comando('calendario', 'Época de plantio na sua cidade (ex.: /calendario feijão, couve)', async (ctx) => {
     if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
-    await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId), BOTOES_CALENDARIO));
+    await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, { incluir: nomesPedidos(ctx.args) }), BOTOES_CALENDARIO));
   });
 
-  k7.telegram.comando('plantar', 'O que dá para plantar agora na sua cidade', async (ctx) => {
+  k7.telegram.comando('plantar', 'O que dá para plantar agora (ex.: /plantar feijão, couve)', async (ctx) => {
     if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
-    await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, { todas: true, sugerir: true }), BOTOES_SUGESTAO));
+    await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, { todas: true, sugerir: true, incluir: nomesPedidos(ctx.args) }), BOTOES_SUGESTAO));
   });
 
   k7.telegram.comando('alertas', 'Como e quando receber o boletim e os alertas', (ctx) => ctx.responder(menuAlertas(ctx.userId)));

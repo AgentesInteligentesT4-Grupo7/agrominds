@@ -55,23 +55,27 @@ export function registrarFerramentas(c: Contexto): void {
   k7.ferramenta({
     name: 'epoca_de_plantio',
     description:
-      'Época de plantar no município da pessoa, pelo zoneamento oficial (ZARC, MAPA/Embrapa). Sem `plantas`: o que dá para plantar agora ' +
-      '(sugestões, opcionalmente só da horta ou só da lavoura). Use para "quando planto feijão?", "o que planto agora na horta?".',
+      'Época de plantar no município da pessoa, pelo zoneamento oficial (ZARC, MAPA/Embrapa). `sugerir`: a lista do que dá para plantar ' +
+      'agora (em ordem alfabética; opcionalmente só da horta ou só da lavoura). `plantas`: plantas que a pessoa perguntou; com `sugerir`, ' +
+      'entram a mais na tabela, mesmo fora de época ou sem dado. Use para "quando planto feijão?", "o que planto agora na horta?" e, ' +
+      'depois da lista, "e o tomate?" (sugerir: true, plantas: ["tomate"]).',
     parameters: {
       type: 'object',
       properties: {
-        plantas: { type: 'array', items: { type: 'string' }, description: `Plantas do catálogo (vazio: sugestões do que plantar agora): ${idsPlantas().join(', ')}` },
+        sugerir: { type: 'boolean', description: 'true: a lista do que plantar agora (padrão quando não há `plantas`)' },
+        plantas: { type: 'array', items: { type: 'string' }, description: `Plantas que a pessoa citou, pelo nome ou id (catálogo: ${idsPlantas().join(', ')}; outras entram como "sem dado")` },
         grupo: { type: 'string', enum: ['horta', 'lavoura'], description: 'Só horta/quintal/pomar ou só lavoura' },
       },
       additionalProperties: false,
     },
     async run(args, ctx) {
       lugarOuErro(c, ctx.userId);
-      const plantas = Array.isArray(args.plantas) ? args.plantas.map(String).filter((p) => idsPlantas().includes(p)) : [];
+      const plantas = Array.isArray(args.plantas) ? args.plantas.map(String).filter((p) => p.trim()) : [];
       const grupo = args.grupo === 'horta' || args.grupo === 'lavoura' ? args.grupo : undefined;
-      const s = plantas.length
-        ? await calendarioDe(c, ctx.userId!, { plantas })
-        : await calendarioDe(c, ctx.userId!, { todas: true, sugerir: true, ...(grupo ? { grupo } : {}) });
+      const s =
+        args.sugerir === true || !plantas.length
+          ? await calendarioDe(c, ctx.userId!, { todas: true, sugerir: true, ...(grupo ? { grupo } : {}), incluir: plantas })
+          : await calendarioDe(c, ctx.userId!, { plantas: [], incluir: plantas });
       anexar(ctx, s.mensagem);
       return s.texto + (typeof s.mensagem === 'string' ? '' : IMAGEM);
     },

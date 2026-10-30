@@ -34,6 +34,7 @@ export function nomeDoDia(data: string, hoje: string, curto = false): string {
   return (curto ? CURTOS : DIAS)[diaDaSemana(data)]!;
 }
 
+const alfabetica = (a: string, b: string) => a.localeCompare(b, 'pt-BR');
 const ddmm = (data: string) => `${data.slice(8, 10)}/${data.slice(5, 7)}`;
 const n = (v: unknown) => (typeof v === 'number' ? v : null);
 
@@ -247,13 +248,23 @@ export function dadosCalendario(lugar: Lugar, linhas: LinhaCalendario[], hoje: s
     titulo: opcoes.titulo ?? 'Calendário de plantio',
     subtitulo: `${lugar.nome} · zoneamento agrícola (ZARC)${opcoes.safra ? ` ${opcoes.safra}` : ''}`,
     hoje: decendioDe(hoje),
-    ...(opcoes.destaque ? { destaque: { titulo: 'Dá para plantar agora', agora: s.agora.map(rotulo), logo: s.logo.map((l) => `${rotulo(l)} · em ${l.em * 10} dias`) } } : {}),
+    ...(opcoes.destaque
+      ? {
+          destaque: {
+            titulo: 'Dá para plantar agora',
+            // Em ordem alfabética (as que abrem logo, também).
+            agora: s.agora.filter((l) => !l.pedida).map(rotulo).sort(alfabetica),
+            logo: s.logo.filter((l) => !l.pedida).sort((a, b) => alfabetica(rotulo(a), rotulo(b))).map((l) => `${rotulo(l)} · em ${l.em * 10} dias`),
+          },
+        }
+      : {}),
     linhas: linhas.map((l) => ({
       nome: l.nome,
       ...(l.epoca ? { epoca: l.epoca } : {}),
       risco: l.risco,
       ...(l.manejo ? { manejo: l.manejo } : {}),
       ...(l.minha ? { minha: true } : {}),
+      ...(l.pedida ? { pedida: true } : {}),
       ...(l.semDado ? { semDado: l.semDado } : {}),
       ...(l.plantio ? { sua: { de: decendioDe(l.plantio), ate: decendioDe(l.colheita ?? l.plantio) } } : {}),
     })),

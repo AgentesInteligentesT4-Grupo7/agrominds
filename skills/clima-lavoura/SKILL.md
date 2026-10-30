@@ -12,7 +12,9 @@ exige_ferramenta: true
    `previsao_periodo` (hoje, amanha, fds, 3, 7 ou 14).
 3. Quando plantar, ou o que plantar agora (na horta ou na lavoura): use `epoca_de_plantio`. A época vem do zoneamento
    oficial (ZARC) do município da pessoa; para plantas sem zoneamento (alface, couve, temperos), diga que não há
-   calendário oficial, sem inventar meses.
+   calendário oficial, sem inventar meses. Se, depois da lista do que plantar agora, a pessoa perguntar por uma
+   planta que não estava nela ("e o tomate?"), chame de novo com `sugerir: true` e `plantas: ["tomate"]`: ela entra a
+   mais na tabela.
 4. Como estão as plantas da pessoa (fase, colheita estimada): use `minhas_plantas`.
 5. Irrigar ou falta de água: use `balanco_agua`.
 6. Se a pessoa contar o que planta, quando plantou, a fase ou se irriga ("plantei soja dia 10", "tenho alface e couve

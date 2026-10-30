@@ -111,6 +111,8 @@ main { padding: 0 0 18px; }
 .cal td.nome { font-size: 14px; font-weight: 600; padding-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal td.nome small { display: block; font-weight: 400; color: var(--suave); font-size: 11px; margin-top: -2px; }
 .cal tr.minha td.nome { color: var(--sua); }
+.cal tr.pedida td { background: #fff8e8; }
+.cal tr.pedida td.nome small { color: #a65f00; }
 .cal td.d { position: relative; }
 .cal td.d.m { border-left: 1px solid #e3e6dc; }
 .cal td.d .b { position: absolute; left: 0; right: 0; top: 9px; height: 12px; }

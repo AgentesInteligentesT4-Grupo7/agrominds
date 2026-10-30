@@ -187,8 +187,10 @@ export interface LinhaCalendario {
   /** 36 decêndios: risco 20/30/40 onde o ZARC indica plantar; 0 onde não indica. */
   risco: number[];
   manejo?: string;
-  /** A planta não tem zoneamento (folhosas, temperos) ou o município não tem janela para ela. */
-  semDado?: 'sem_zoneamento' | 'nao_indicado';
+  /** A planta não tem zoneamento (folhosas, temperos), o município não tem janela para ela ou ela nem está no catálogo. */
+  semDado?: 'sem_zoneamento' | 'nao_indicado' | 'fora_do_catalogo';
+  /** A pessoa pediu esta planta (entra a mais na tabela). */
+  pedida?: boolean;
   /** É uma planta da pessoa (destaque) e, com a data de plantio, de quando até quando (colheita estimada). */
   minha?: boolean;
   plantio?: string;
@@ -241,7 +243,8 @@ export function sugestoes(linhas: LinhaCalendario[], hoje: string): { agora: Lin
 /** Texto do calendário (para a legenda e para o agente): "Soja: plantio de 21/set a 10/jan (risco até 40%)". */
 export function textoCalendario(linhas: LinhaCalendario[]): string[] {
   return linhas.map((l) => {
-    const nome = `${l.nome}${l.epoca ? ` (${l.epoca})` : ''}`;
+    const nome = `${l.nome}${l.epoca ? ` (${l.epoca})` : ''}${l.pedida ? ' [você pediu]' : ''}`;
+    if (l.semDado === 'fora_do_catalogo') return `${nome}: não está no catálogo do bot, sem dado oficial de época de plantio`;
     if (l.semDado === 'sem_zoneamento') return `${nome}: o ZARC não tem zoneamento para esta planta`;
     if (l.semDado === 'nao_indicado') return `${nome}: o ZARC não indica plantio no seu município`;
     const fx = faixas(l.risco).map((f) => `${textoFaixa(f)}${f.risco > 20 ? ` (risco até ${f.risco}%)` : ''}`);

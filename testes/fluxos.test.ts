@@ -7,7 +7,7 @@ import type { TelegramResposta } from '../extensao/k7.js';
 import { OpenMeteo, type Previsao } from '../extensao/OpenMeteo.js';
 import { registrarTelegram } from '../extensao/telegram.js';
 import { registrarFerramentas } from '../extensao/ferramentas.js';
-import { hojeLocal } from '../extensao/Servicos.js';
+import { calendarioDe, hojeLocal, nomesPedidos } from '../extensao/Servicos.js';
 import { K7Falso, dadosDaPagina, montarFita, previsaoSintetica, quando } from './apoio.js';
 
 const texto = (r: string | TelegramResposta) => (typeof r === 'string' ? r : r.texto);
@@ -118,6 +118,30 @@ describe('Conversa no Telegram', () => {
     const beto = vazio.k7.pessoa('50');
     await beto.comando('calendario');
     assert.match(texto(beto.respostas.at(-1)!), /ainda não foi baixado/);
+  });
+
+  it('o que plantar agora: lista em ordem alfabética; o que a pessoa pede entra a mais na tabela', async () => {
+    const { k7, banco, contexto } = await montar(() => previsaoSintetica('2026-10-30T09:00'));
+    banco.salvarLugar('50', 'Goiânia/GO', -16.69, -49.26);
+    assert.deepEqual(nomesPedidos('e o feijão? Tomate e abóbora'), ['feijão', 'Tomate', 'abóbora']);
+    await calendarioDe(contexto, '50', { todas: true, sugerir: true, incluir: nomesPedidos('feijão, tomate, abóbora, soja') }, quando('2026-10-30T09:00'));
+    const d = dadosDaPagina(k7.htmls.at(-1)!);
+    assert.deepEqual(d.destaque.agora, ['Banana', 'Soja'], 'em ordem alfabética (no catálogo, soja vem antes)');
+    assert.deepEqual(
+      d.linhas.map((l: { nome: string; epoca?: string; pedida?: boolean; semDado?: string }) => [l.nome, l.epoca ?? '', l.pedida ?? false, l.semDado ?? '']),
+      [
+        ['Banana', '', false, ''],
+        ['Soja', '', false, ''],
+        ['Feijão', '1ª safra', true, 'nao_indicado'],
+        ['Feijão', '2ª safra', true, 'nao_indicado'],
+        ['Tomate', '', true, 'sem_zoneamento'],
+        ['Abóbora', '', true, 'fora_do_catalogo'],
+      ],
+      'soja já estava na lista: não repete',
+    );
+    const ana = k7.pessoa('50');
+    await ana.comando('plantar', 'e o tomate?');
+    assert.ok(dadosDaPagina(k7.htmls.at(-1)!).linhas.some((l: { nome: string; pedida?: boolean }) => l.nome === 'Tomate' && l.pedida));
   });
 
   it('/alertas e /esquecer', async () => {
