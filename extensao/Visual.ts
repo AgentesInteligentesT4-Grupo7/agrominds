@@ -1,6 +1,6 @@
 import type { Lavoura, Lugar } from './Banco.js';
 import { type Previsao, horaLocal, somarHoras } from './OpenMeteo.js';
-import { type LinhaCalendario, type Planta, decendioDe, faixas, faseAtual, sugestoes, textoFaixa } from './Plantas.js';
+import { type LinhaCalendario, type Planta, decendioDe, faixas, faseAtual, janelaDeColheita, sugestoes, textoCiclo, textoFaixa } from './Plantas.js';
 import type { Cultura, Resultado } from './Regras.js';
 
 /** Dados de cada layout (layouts/*.html): o que a página espera em `window.DADOS`. */
@@ -234,6 +234,8 @@ export function dadosPlantas(lugar: Lugar, lavouras: Lavoura[], catalogo: Planta
         janela,
         agora: risco ? risco[dec - 1]! > 0 : null,
         risco,
+        colheitaJanela: risco && !planta?.perene ? (janelaDeColheita(risco, planta?.cicloDias) ?? null) : null,
+        tempo: planta?.perene ? 'Planta perene: produz por anos' : planta?.cicloDias ? `Leva ${textoCiclo(planta.cicloDias)} do plantio à colheita` : null,
       };
     }),
     rodape: 'Janelas: ZARC (MAPA/Embrapa), solo de textura média · colheita estimada pelo ciclo médio (referência a revisar)',
@@ -262,6 +264,8 @@ export function dadosCalendario(lugar: Lugar, linhas: LinhaCalendario[], hoje: s
       nome: l.nome,
       ...(l.epoca ? { epoca: l.epoca } : {}),
       risco: l.risco,
+      ...(l.colheitaJanela ? { colheita: l.colheitaJanela } : {}),
+      ...(l.perene ? { tempo: 'perene' } : l.cicloDias && !l.semDado ? { tempo: `colhe ${textoCiclo(l.cicloDias)} depois` } : {}),
       ...(l.manejo ? { manejo: l.manejo } : {}),
       ...(l.minha ? { minha: true } : {}),
       ...(l.pedida ? { pedida: true } : {}),
@@ -269,6 +273,6 @@ export function dadosCalendario(lugar: Lugar, linhas: LinhaCalendario[], hoje: s
       ...(l.plantio ? { sua: { de: decendioDe(l.plantio), ate: decendioDe(l.colheita ?? l.plantio) } } : {}),
     })),
     ...(opcoes.vazio ? { vazio: opcoes.vazio } : {}),
-    rodape: 'Fonte: ZARC (MAPA/Embrapa), solo de textura média, melhor caso entre ciclos e cultivares · confira a portaria do seu município',
+    rodape: 'Época de plantio: ZARC (MAPA/Embrapa), solo de textura média · colheita estimada pelo ciclo médio (referência a revisar)',
   };
 }

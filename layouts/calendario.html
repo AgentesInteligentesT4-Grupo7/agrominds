@@ -17,15 +17,19 @@ const EXEMPLO = {
   hoje: 30,
   destaque: { titulo: 'Dá para plantar agora', agora: ['Cebola', 'Mandioca', 'Milho (1ª safra)', 'Soja'], logo: [] },
   linhas: [
-    { nome: 'Soja', risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20], minha: true, sua: { de: 25, ate: 36 } },
-    { nome: 'Milho', epoca: '1ª safra', risco: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 20, 20] },
-    { nome: 'Milho', epoca: '2ª safra (safrinha)', risco: [20, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-    { nome: 'Cebola', manejo: 'Irrigado', risco: [0, 0, 0, 0, 0, 0, 0, 40, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 40, 0, 0, 0, 0, 0, 40, 20, 30, 40, 0, 0, 0, 0] },
+    { nome: 'Soja', tempo: 'colhe ~4 meses depois', passos: 12, risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20], minha: true, sua: { de: 28, ate: 4 } },
+    { nome: 'Milho', epoca: '1ª safra', tempo: 'colhe ~4 meses depois', passos: 13, risco: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 20, 20] },
+    { nome: 'Milho', epoca: '2ª safra (safrinha)', tempo: 'colhe ~4 meses depois', passos: 13, risco: [20, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    { nome: 'Banana', manejo: 'Irrigado', tempo: 'perene', risco: new Array(36).fill(20) },
     { nome: 'Alface', semDado: 'sem_zoneamento', risco: [], pedida: true },
     { nome: 'Feijão', epoca: '2ª safra', risco: [0, 0, 0, 0, 0, 0, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], pedida: true },
   ],
   rodape: 'Fonte: ZARC (MAPA/Embrapa), solo de textura média, melhor caso entre os ciclos · confira a portaria do seu município',
 };
+
+/** Exemplo: a colheita é a janela de plantio andada o ciclo (em decêndios). */
+function desloca(risco, passos) { var out = new Array(36).fill(0); risco.forEach(function (r, i) { if (r) out[(i + passos) % 36] = 1; }); return out; }
+EXEMPLO.linhas.forEach(function (l) { if (l.passos) { l.colheita = desloca(l.risco, l.passos); delete l.passos; } });
 
 // Ano-safra: de julho (decêndio 19) a junho (decêndio 18).
 const ORDEM = Array.from({ length: 36 }, (_, i) => ((i + 18) % 36) + 1);
@@ -61,8 +65,9 @@ desenhar(window.DADOS ?? EXEMPLO, (d) => `
       </div>` : ''}
     <div class="cartao">
       ${d.linhas.length ? `
+      <p class="como-ler"><b>Como ler:</b> plante (semente ou muda) quando a linha estiver <b class="v">verde</b>; quanto mais escuro, menor o risco de perder a plantação pelo clima. Plantando no verde, a colheita cai na faixa <b class="l">laranja</b> logo abaixo (estimada pelo tempo médio da planta). Em branco: fora de época.</p>
       <table class="cal">
-        <colgroup><col style="width:150px"><col span="36"></colgroup>
+        <colgroup><col style="width:165px"><col span="36"></colgroup>
         <thead>
           <tr><th></th>${ESTACOES.map(([n, meses]) => `<th class="estacao" colspan="${meses * 3}">${n}</th>`).join('')}</tr>
           <tr><th></th>${MESES.map((m) => `<th colspan="3">${m}</th>`).join('')}</tr>
@@ -70,22 +75,24 @@ desenhar(window.DADOS ?? EXEMPLO, (d) => `
         <tbody>
           ${d.linhas.map((l) => `
             <tr class="${l.minha ? 'minha' : ''}${l.pedida ? ' pedida' : ''}">
-              <td class="nome">${l.minha ? '★ ' : ''}${esc(l.nome)}${l.epoca || l.manejo === 'Irrigado' || l.pedida ? `<small>${esc([l.epoca, l.manejo === 'Irrigado' ? 'irrigado' : '', l.pedida ? 'você pediu' : ''].filter(Boolean).join(' · '))}</small>` : ''}</td>
+              <td class="nome">${l.minha ? '★ ' : ''}${esc(l.nome)}${l.epoca || l.manejo === 'Irrigado' || l.pedida || l.tempo ? `<small>${esc([l.epoca, l.tempo, l.manejo === 'Irrigado' ? 'irrigado' : '', l.pedida ? 'você pediu' : ''].filter(Boolean).join(' · '))}</small>` : ''}</td>
               ${l.semDado
                 ? `<td class="semdado" colspan="36">${SEM_DADO[l.semDado]}</td>`
                 : ORDEM.map((dec, i) => {
                     const r = l.risco[dec - 1];
                     const sua = l.sua && dentro(dec, l.sua.de, l.sua.ate);
-                    return `<td class="d${i % 3 === 0 ? ' m' : ''}${dec === d.hoje ? ' hoje' : ''}">${r ? `<div class="b r${r}"></div>` : ''}${sua ? '<div class="s"></div>' : ''}</td>`;
+                    const colhe = l.colheita && l.colheita[dec - 1];
+                    return `<td class="d${i % 3 === 0 ? ' m' : ''}${dec === d.hoje ? ' hoje' : ''}">${r ? `<div class="b r${r}"></div>` : ''}${colhe ? '<div class="h"></div>' : ''}${sua ? '<div class="s"></div>' : ''}</td>`;
                   }).join('')}
             </tr>`).join('')}
         </tbody>
       </table>
       <div class="legenda">
-        <span><i style="background:var(--plantio-20)"></i>plantio indicado (risco 20%)</span>
-        <span><i style="background:var(--plantio-30)"></i>risco 30%</span>
-        <span><i style="background:var(--plantio-40)"></i>risco 40%</span>
-        <span><i style="background:var(--sua);height:4px"></i>sua planta (do plantio à colheita estimada)</span>
+        <span><i style="background:var(--plantio-20)"></i>plantar (risco climático 20%)</span>
+        <span><i style="background:var(--plantio-30)"></i>plantar (30%)</span>
+        <span><i style="background:var(--plantio-40)"></i>plantar (40%)</span>
+        <span><i style="background:var(--colheita);height:6px"></i>colheita, se plantar no verde (estimada)</span>
+        <span><i style="background:var(--sua);height:4px"></i>a sua (do plantio à colheita)</span>
         <span><i style="border-left:2px dashed var(--quente);width:2px;border-radius:0"></i>hoje</span>
       </div>` : `<p class="suave">${esc(d.vazio ?? 'Sem plantas para mostrar.')}</p>`}
     </div>

@@ -15,7 +15,7 @@ const EXEMPLO = {
   lugar: 'Goiânia/GO',
   hoje: 30,
   plantas: [
-    { nome: 'Soja', grupo: 'lavoura', fase: 'Florindo', irrigada: false, plantio: '01/09', dias: 59, ciclo: 120, colheita: '29/12', janela: 'Plantar de 21/set a 10/jan', agora: true, risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20] },
+    { nome: 'Soja', grupo: 'lavoura', fase: 'Florindo', irrigada: false, plantio: '01/09', dias: 59, ciclo: 120, colheita: '29/12', janela: 'Plantar de 21/set a 10/jan', tempo: 'Leva ~4 meses do plantio à colheita', colheitaJanela: [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], agora: true, risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20] },
     { nome: 'Milho', grupo: 'lavoura', fase: 'Preparando o plantio', irrigada: false, janela: '1ª safra: 21/out a 31/dez · safrinha: 1/jan a 10/fev', agora: true, risco: [20, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 20, 20] },
     { nome: 'Alface', grupo: 'horta', fase: 'Crescendo', irrigada: true, janela: 'Sem zoneamento oficial (ZARC) para esta planta', agora: null, risco: null },
   ],
@@ -49,15 +49,18 @@ desenhar(window.DADOS ?? EXEMPLO, (d) => `
                <div class="info"><span>Plantada em ${esc(p.plantio)} · ${p.dias} dias</span><span>${p.passou ? 'Já passou do ciclo: colheu?' : `Colheita estimada: ${esc(p.colheita)}`}</span></div>`
             : ''}
           <div class="info" style="margin-top:6px"><span>${p.agora === true ? '🟢 ' : p.agora === false ? '⚪ ' : ''}${esc(p.janela)}</span></div>
+          ${p.tempo ? `<div class="info"><span>⏳ ${esc(p.tempo)}</span></div>` : ''}
           ${p.risco ? `
             <div class="faixa-meses">${p.risco.map((r, i) => `<i class="${r ? 'r' + r : ''}${i + 1 === d.hoje ? ' hoje' : ''}"></i>`).join('')}</div>
+            ${p.colheitaJanela ? `<div class="faixa-meses colheita">${p.colheitaJanela.map((c) => `<i class="${c ? 'c' : ''}"></i>`).join('')}</div>` : ''}
             <div class="meses-rotulo">${MESES.map((m) => `<span>${m}</span>`).join('')}</div>` : ''}
         </div>`).join('')}
     </div>
     <div class="legenda">
-      <span><i style="background:var(--plantio-20)"></i>época de plantio (risco 20%)</span>
+      <span><i style="background:var(--plantio-20)"></i>época de plantar (risco 20%)</span>
       <span><i style="background:var(--plantio-30)"></i>30%</span>
       <span><i style="background:var(--plantio-40)"></i>40%</span>
+      <span><i style="background:var(--colheita);height:5px"></i>colheita (estimada)</span>
       <span><i style="background:#fff;outline:2px solid var(--quente)"></i>hoje</span>
     </div>
   </section>

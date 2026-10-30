@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 import type { Lavoura } from '../extensao/Banco.js';
 import { Layouts } from '../extensao/Layouts.js';
-import { calendario, culturasDoZarc, decendioDe, diaDoDecendio, faixas, faseAtual, sugestoes, textoFaixa } from '../extensao/Plantas.js';
+import { calendario, culturasDoZarc, decendioDe, diaDoDecendio, faixas, faseAtual, janelaDeColheita, sugestoes, textoCiclo, textoFaixa } from '../extensao/Plantas.js';
 import { Zarc, chaveDeNome } from '../extensao/Zarc.js';
 import { dadosAlerta, dadosCalendario, dadosPlantas, dadosPrevisao, dadosTempo, periodoDe } from '../extensao/Visual.js';
 import { K7Falso, culturasDaFita, emLinhas, plantasDaFita, playwright, previsaoSintetica, quando, sqlEmMemoria, tabuaZarc } from './apoio.js';
@@ -34,6 +34,16 @@ describe('Catálogo de plantas (regras/plantas.yaml)', () => {
     assert.deepEqual(faixas(risco), [{ inicio: 10, fim: 10, risco: 30 }, { inicio: 26, fim: 2, risco: 40 }]);
     assert.equal(textoFaixa(faixas(risco)[1]!), '11/set a 20/jan');
     assert.equal(textoFaixa(faixas(new Array(36).fill(20))[0]!), 'o ano todo');
+  });
+
+  it('colheita: a janela de plantio andada o ciclo (vira o ano); perene e ciclo de 1 ano ou mais não têm faixa', () => {
+    const risco = new Array(36).fill(0);
+    for (const d of [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 1]) risco[d - 1] = 20;
+    const colheita = janelaDeColheita(risco, 120)!;
+    assert.deepEqual(colheita.flatMap((c, i) => (c ? [i + 1] : [])), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], '~4 meses depois: de fevereiro a maio');
+    assert.equal(janelaDeColheita(risco, 365), undefined);
+    assert.equal(textoCiclo(120), '~4 meses');
+    assert.equal(textoCiclo(45), '~45 dias');
   });
 
   it('fase pela data de plantio e o ciclo; colheita estimada; perene usa a fase informada', () => {

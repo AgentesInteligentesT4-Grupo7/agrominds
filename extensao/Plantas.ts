@@ -195,6 +195,26 @@ export interface LinhaCalendario {
   minha?: boolean;
   plantio?: string;
   colheita?: string;
+  /** Ciclo médio do plantio à colheita (referência a revisar); ausente nas perenes e sem dado. */
+  cicloDias?: number;
+  /** Planta perene (café, frutas, cana, pasto): produz por anos, sem colheita "da safra". */
+  perene?: boolean;
+  /** 36 decêndios: 1 onde cai a colheita de quem plantou dentro da janela (janela + ciclo); 0 fora. */
+  colheitaJanela?: number[];
+}
+
+/** Onde cai a colheita de quem planta dentro da janela: cada decêndio indicado andado o ciclo (estimativa). */
+export function janelaDeColheita(risco: number[], cicloDias: number | undefined): number[] | undefined {
+  if (!cicloDias || cicloDias >= 360 || !risco.some(Boolean)) return undefined;
+  const passos = Math.round(cicloDias / 10);
+  const out = new Array<number>(36).fill(0);
+  risco.forEach((r, i) => r && (out[(i + passos) % 36] = 1));
+  return out;
+}
+
+/** "~4 meses" (ou "~45 dias" quando é menos de 2 meses). */
+export function textoCiclo(dias: number): string {
+  return dias < 60 ? `~${dias} dias` : `~${Math.round(dias / 30)} meses`;
 }
 
 /** Linhas do calendário (uma por época) para as plantas pedidas, no município. */
@@ -202,7 +222,7 @@ export function calendario(zarc: Zarc, geocodigo: string | undefined, plantas: P
   const out: LinhaCalendario[] = [];
   for (const p of plantas) {
     const minha = minhas.find((l) => l.planta === p.id);
-    const base = { planta: p.id, nome: p.nome, ...(minha ? { minha: true } : {}) };
+    const base = { planta: p.id, nome: p.nome, ...(minha ? { minha: true } : {}), ...(p.perene ? { perene: true } : p.cicloDias ? { cicloDias: p.cicloDias } : {}) };
     const sua = minha?.plantio ? { plantio: minha.plantio, ...(p.cicloDias ? { colheita: somarDias(minha.plantio, p.cicloDias) } : {}) } : {};
     if (!p.zarc.length) {
       out.push({ ...base, ...sua, risco: new Array(36).fill(0), semDado: 'sem_zoneamento' });
@@ -213,11 +233,13 @@ export function calendario(zarc: Zarc, geocodigo: string | undefined, plantas: P
       const janelas = geocodigo ? zarc.janelas(geocodigo, epoca.culturas, { manejo }) : [];
       const risco = new Array<number>(36).fill(0);
       for (const j of janelas) j.risco.forEach((r, k) => r && (!risco[k] || r < risco[k]!) && (risco[k] = r));
+      const colheitaJanela = p.perene ? undefined : janelaDeColheita(risco, p.cicloDias);
       out.push({
         ...base,
         ...(i === 0 ? sua : {}),
         ...(epoca.nome ? { epoca: epoca.nome } : {}),
         risco,
+        ...(colheitaJanela ? { colheitaJanela } : {}),
         ...(janelas[0] ? { manejo: janelas[0].manejo } : {}),
         ...(janelas.some((j) => j.risco.some(Boolean)) ? {} : { semDado: 'nao_indicado' as const }),
       });
@@ -248,6 +270,11 @@ export function textoCalendario(linhas: LinhaCalendario[]): string[] {
     if (l.semDado === 'sem_zoneamento') return `${nome}: o ZARC não tem zoneamento para esta planta`;
     if (l.semDado === 'nao_indicado') return `${nome}: o ZARC não indica plantio no seu município`;
     const fx = faixas(l.risco).map((f) => `${textoFaixa(f)}${f.risco > 20 ? ` (risco até ${f.risco}%)` : ''}`);
-    return `${nome}: plantar de ${fx.join('; ')}${l.manejo === 'Irrigado' ? ', com irrigação' : ''}`;
+    const colhe = l.perene
+      ? '; planta perene (produz por anos)'
+      : l.cicloDias && l.colheitaJanela
+        ? `; leva ${textoCiclo(l.cicloDias)} até colher: colheita de ${faixas(l.colheitaJanela).map(textoFaixa).join('; ')} (estimativa)`
+        : '';
+    return `${nome}: plantar de ${fx.join('; ')}${l.manejo === 'Irrigado' ? ', com irrigação' : ''}${colhe}`;
   });
 }
