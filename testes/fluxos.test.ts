@@ -88,6 +88,8 @@ describe('Notificações automáticas', () => {
     await notificador.ciclo(quando('2026-10-30T06:10'));
     assert.equal(k7.enviados.length, 1);
     assert.match(texto(k7.enviados[0]!.mensagem), /^🌅 Boletim das 6h — Goiânia\/GO \(soja, plantada \/ emergência\)[\s\S]*Risco de geada/);
+    const foto = (k7.enviados[0]!.mensagem as TelegramResposta).imagem!;
+    assert.equal(foto.subarray(1, 4).toString(), 'PNG', 'o boletim vai com o cartão do tempo em imagem');
     await notificador.ciclo(quando('2026-10-30T06:40'));
     assert.equal(k7.enviados.length, 1, 'mesmo horário: não manda de novo');
     await notificador.ciclo(quando('2026-10-30T09:00'));

@@ -7,6 +7,7 @@ import type { Previsao } from '../extensao/OpenMeteo.js';
 /** Os testes rodam pelo K7, na pasta da fita (npm run fita -- agrominds testes, que informa K7_DIR): o leitor de YAML vem dele. */
 const k7Dir = process.env.K7_DIR ?? path.resolve('../../ParreiraClaw');
 export const lerYaml = (createRequire(path.join(k7Dir, 'package.json'))('js-yaml') as { load(t: string): unknown }).load;
+const resvg = createRequire(path.join(k7Dir, 'package.json'))('@resvg/resvg-js') as { Resvg: new (svg: string, o: unknown) => { render(): { asPng(): Uint8Array } } };
 
 /** Banco da fita nos testes: o SQLite que já vem no Node (sem pacotes). */
 export function sqlEmMemoria(): FitaSql {
@@ -63,6 +64,7 @@ export class K7Falso {
         limitador: () => ({ run: (_c, t) => t() }),
         emParalelo: (itens, _m, t) => Promise.all(itens.map(t)),
         lerYaml: (texto) => lerYaml(texto),
+        svgParaPng: async (svg) => Buffer.from(new resvg.Resvg(svg, { font: { loadSystemFonts: true } }).render().asPng()),
       },
       processoPrincipal: false,
       tarefa: (nome) => void this.tarefas.push(nome),

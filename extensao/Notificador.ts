@@ -1,6 +1,7 @@
 import type { Banco, Lugar, Severidade } from './Banco.js';
 import { errorMessage } from './erros.js';
 import type { FitaApi } from './k7.js';
+import { cartaoSvg, comCartao } from './Cartao.js';
 import { mensagemAlerta, mensagemBoletim } from './Mensagens.js';
 import { type OpenMeteo, horaLocal } from './OpenMeteo.js';
 import { type Cultura, type Regra, type Resultado, avaliarRegras } from './Regras.js';
@@ -54,7 +55,8 @@ export class Notificador {
     const p = await this.meteo.previsao(lugar.celula);
     const lavoura = this.banco.lavoura(userId);
     const resultados = avaliarRegras(this.regras(), p, lavoura, this.culturas());
-    return this.enviar(userId, tipo, resultados, mensagemBoletim(p, lugar, lavoura, this.culturas(), resultados));
+    const texto = mensagemBoletim(p, lugar, lavoura, this.culturas(), resultados);
+    return this.enviar(userId, tipo, resultados, texto, () => cartaoSvg(p, lugar, lavoura, this.culturas(), resultados, 'Boletim'));
   }
 
   private async avaliarLugar(lugar: Lugar, modo: string, horarios: number[], agora: Date): Promise<{ boletim: boolean; alertas: number }> {
@@ -70,7 +72,8 @@ export class Notificador {
       const chave = `boletim:${hoje}:${hora}`;
       if (this.banco.jaAvisado(lugar.userId, chave, 'info')) return { boletim: false, alertas: 0 };
       this.banco.marcarAvisado(lugar.userId, chave, 'info');
-      const envio = await this.enviar(lugar.userId, 'boletim', resultados, mensagemBoletim(p, lugar, lavoura, this.culturas(), resultados, agora));
+      const texto = mensagemBoletim(p, lugar, lavoura, this.culturas(), resultados, agora);
+      const envio = await this.enviar(lugar.userId, 'boletim', resultados, texto, () => cartaoSvg(p, lugar, lavoura, this.culturas(), resultados, 'Boletim', agora));
       // O que foi no boletim não volta logo depois como alerta.
       if (resolvido(envio)) for (const r of resultados.filter((x) => x.alerta)) this.banco.marcarAvisado(lugar.userId, `${r.regra}:${r.dia}`, r.severidade);
       return { boletim: envio.entregue, alertas: 0 };
@@ -88,8 +91,9 @@ export class Notificador {
     return { boletim: false, alertas: envio.entregue ? enviar.length : 0 };
   }
 
-  private async enviar(userId: string, tipo: 'boletim' | 'alerta' | 'teste', resultados: Resultado[], texto: string) {
-    const envio = await this.k7.telegram.notificar(userId, texto);
+  /** Manda (com o cartão em imagem, quando houver `svg`) e registra; o texto registrado é o da mensagem. */
+  private async enviar(userId: string, tipo: 'boletim' | 'alerta' | 'teste', resultados: Resultado[], texto: string, svg?: () => string) {
+    const envio = await this.k7.telegram.notificar(userId, svg ? await comCartao(this.k7, texto, svg) : texto);
     const pior = resultados.reduce<Severidade | null>((max, r) => (!max || PIOR[r.severidade] > PIOR[max] ? r.severidade : max), null);
     this.banco.registrarEnvio({ userId, tipo, regras: resultados.map((r) => r.regra), severidade: pior, texto, entregue: envio.entregue, erro: envio.erro ?? null });
     return envio;

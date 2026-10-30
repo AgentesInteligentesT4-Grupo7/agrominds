@@ -1,5 +1,6 @@
 import type { Banco, ModoEnvio } from './Banco.js';
 import type { FitaApi, TelegramBotao, TelegramCtx } from './k7.js';
+import { cartaoSvg, comCartao } from './Cartao.js';
 import { mensagemClima } from './Mensagens.js';
 import type { Notificador } from './Notificador.js';
 import type { OpenMeteo } from './OpenMeteo.js';
@@ -127,7 +128,7 @@ export function registrarTelegram(c: Contexto): void {
     const lavoura = banco.lavoura(ctx.userId);
     const resultados = avaliarRegras(c.regras(), p, lavoura, c.culturas());
     const texto = mensagemClima(p, lugar, lavoura, c.culturas(), resultados);
-    await ctx.responder(texto);
+    await ctx.responder(await comCartao(k7, texto, () => cartaoSvg(p, lugar, lavoura, c.culturas(), resultados, 'Tempo agora')));
     banco.registrarEnvio({ userId: ctx.userId, tipo: 'resposta', regras: resultados.map((r) => r.regra), severidade: null, texto, entregue: true, erro: null });
   });
 
