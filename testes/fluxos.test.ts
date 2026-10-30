@@ -129,10 +129,9 @@ describe('Notificações automáticas', () => {
     assert.equal(k7.enviados.length, 0);
     const falhou = banco.envios({ userId: '4' })[0]!;
     assert.deepEqual([falhou.entregue, falhou.erro], [false, 'Forbidden: bot was blocked by the user']);
-    // Não marcou como avisado: tenta de novo no próximo ciclo.
-    k7.inalcancaveis.delete('4');
+    // Bloqueou o bot: não insiste a cada 10 min (o registro não enche de tentativas).
     await notificador.ciclo(quando('2026-10-30T10:10'));
-    assert.deepEqual(k7.enviados.map((e) => e.userId), ['4']);
+    assert.equal(banco.envios({ userId: '4' }).length, 1);
   });
 });
 

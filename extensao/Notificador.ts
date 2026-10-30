@@ -7,6 +7,10 @@ import { type Cultura, type Regra, type Resultado, avaliarRegras } from './Regra
 
 const PIOR: Record<Severidade, number> = { info: 0, atencao: 1, grave: 2 };
 
+/** Erro que não melhora tentando de novo (a pessoa bloqueou o bot, apagou a conta, bot desligado): não reenvia. */
+const DEFINITIVO = /blocked|deactivated|chat not found|user is deactivated|canal Telegram desligado/i;
+const resolvido = (e: { entregue: boolean; erro?: string }) => e.entregue || DEFINITIVO.test(e.erro ?? '');
+
 /**
  * Envio automático pelo Telegram (tarefa da fita). Para cada lugar cadastrado:
  * - nos horários do boletim (modos `boletim` e `hora`), manda o resumo do dia com as recomendações;
@@ -68,7 +72,7 @@ export class Notificador {
       this.banco.marcarAvisado(lugar.userId, chave, 'info');
       const envio = await this.enviar(lugar.userId, 'boletim', resultados, mensagemBoletim(p, lugar, lavoura, this.culturas(), resultados, agora));
       // O que foi no boletim não volta logo depois como alerta.
-      if (envio.entregue) for (const r of resultados.filter((x) => x.alerta)) this.banco.marcarAvisado(lugar.userId, `${r.regra}:${r.dia}`, r.severidade);
+      if (resolvido(envio)) for (const r of resultados.filter((x) => x.alerta)) this.banco.marcarAvisado(lugar.userId, `${r.regra}:${r.dia}`, r.severidade);
       return { boletim: envio.entregue, alertas: 0 };
     }
 
@@ -79,7 +83,8 @@ export class Notificador {
       .filter((r) => !silencio || r.severidade === 'grave');
     if (!enviar.length) return { boletim: false, alertas: 0 };
     const envio = await this.enviar(lugar.userId, 'alerta', enviar, mensagemAlerta(lugar, enviar, p));
-    if (envio.entregue) for (const r of enviar) this.banco.marcarAvisado(lugar.userId, `${r.regra}:${r.dia}`, r.severidade);
+    // Falha passageira (limite do Telegram, rede): tenta de novo no próximo ciclo. Definitiva: não insiste.
+    if (resolvido(envio)) for (const r of enviar) this.banco.marcarAvisado(lugar.userId, `${r.regra}:${r.dia}`, r.severidade);
     return { boletim: false, alertas: envio.entregue ? enviar.length : 0 };
   }
 

@@ -295,9 +295,10 @@ export class PainelServidor {
       'cache-control': arquivo.endsWith('index.html') ? 'no-store' : 'public, max-age=3600',
       'x-content-type-options': 'nosniff',
       'x-frame-options': 'DENY',
-      'referrer-policy': 'no-referrer',
+      // O OpenStreetMap exige o Referer para servir o mapa: só a origem vai, nunca o caminho.
+      'referrer-policy': 'strict-origin-when-cross-origin',
       // Estilos inline: ECharts e Leaflet posicionam elementos com style. Mapa base do OpenStreetMap.
-      'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'",
+      'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'",
     });
     fs.createReadStream(arquivo).pipe(res);
   }
