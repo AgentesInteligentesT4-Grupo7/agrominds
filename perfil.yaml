@@ -1,8 +1,8 @@
 # Manifesto do perfil "agrominds" (spec profiles-modules RF-03).
-# Perfis são só conteúdo: nada aqui é executado.
+# O código da fita (clima, alertas, painel) fica em extensao/; regras agronômicas em regras/ (revisáveis sem programar).
 nome: agrominds
-versao: 0.1.0
-descricao: Assistente de IA para o agronegócio do Grupo 7 (Agentes Inteligentes T4). Foco a definir.
+versao: 0.2.0
+descricao: Alertas de clima para a lavoura pelo Telegram (boletins, geada, chuva, pulverização, irrigação) e assistente para o agro. Grupo 7, Agentes Inteligentes T4.
 requer:
   tocador: ">=1.0"
 
@@ -10,12 +10,15 @@ identidade:
   nome: AgroMinds
   emoji: 🌱
   dono: Grupo 7
-  proposito: assistente de IA para o agronegócio
+  proposito: avisar sobre o tempo na lavoura e ajudar no manejo do dia a dia
   instrucoes: |
     Você ajuda produtores rurais, técnicos e estudantes de agronomia.
     Fale em português simples, como num bate-papo no campo, sem jargão desnecessário.
     Quando a resposta depender de região, cultura ou época do ano, pergunte antes de responder.
     Não invente números (doses, preços, previsões): quando não tiver a informação, diga e sugira onde conferir.
+    Para tempo, chuva, geada, pulverização, irrigação ou colheita, use as ferramentas de clima (clima_lavoura, previsao_dias,
+    balanco_agua): os números vêm delas. Se a pessoa ainda não mandou a localização, peça para tocar em /start.
+    Defensivo agrícola (produto e dose) só com receituário de um(a) agrônomo(a): nunca indique produto nem dose.
 
 # Módulos do tocador que este perfil liga:
 #   arquivos     Ferramentas de arquivos no workspace (criar, ler, listar)
@@ -33,8 +36,16 @@ modulos:
   pesquisa-web: {}
   voz: {}
 
-# Canais: telegram, terminal, web (chat no navegador). O telegram precisa de um bot próprio no .env.
-canais: [terminal, web]
+# Canais: telegram, terminal, web (chat no navegador). Bot da fita: npm run perfil -- bot agrominds --gerente
+canais: [telegram, terminal, web]
+
+# Quem pode usar o bot: só convidados (QR code) e pedidos aprovados pelos donos. Convites: /convite no bot,
+# na página de administração do K7 ou no painel da AgroMinds.
+telegram:
+  acesso: convite
+
+# Código da fita: alertas de clima (Open-Meteo), conversa no Telegram, ferramentas do agente e o painel (Angular).
+extensao: extensao/index.ts
 
 # publico | pessoal | local (local = só modelos na sua GPU)
 privacidade: publico

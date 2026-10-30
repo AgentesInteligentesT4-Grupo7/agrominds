@@ -1,0 +1,137 @@
+# Regras de clima da AgroMinds: o que avisar e recomendar a partir da previsão (Open-Meteo).
+# O motor só LÊ este arquivo; mudar um limite não exige programar. Cada regra diz a fonte e quem revisou.
+#
+# VALORES DE REFERÊNCIA INICIAIS, A VALIDAR COM AGRÔNOMO(A). Enquanto `revisado_por` estiver vazio, a mensagem sai
+# marcada "(regra em revisão)".
+#
+# Tipos:
+#   alerta  (padrão)  condições sobre a previsão; dispara um aviso com severidade info | atencao | grave
+#   janela            horas do dia em que TODAS as condicoes_hora valem (ex.: pulverizar)
+#   balanco           balanço de água: Σ(ET0 × Kc) − chuva dos últimos dias, contra a chuva prevista (irrigação)
+#
+# Condições (`quando`, todas valem; ou `qualquer`, basta uma):
+#   variavel  temperature_2m, relative_humidity_2m, precipitation, precipitation_probability, wind_speed_10m,
+#             wind_gusts_10m, vapour_pressure_deficit, soil_moisture_9_to_27cm, et0_fao_evapotranspiration,
+#             delta_t (temperatura − bulbo úmido), molhamento (1 se UR ≥ 90% ou chuva)
+#   agregacao minimo | maximo | soma | media | horas (quantas horas atendem `operador valor`)
+#   janela    proximas_Nh | ultimas_Nh | hoje | amanha
+#   operador  < <= > >= ==
+#
+# Mensagem: {valor} (resultado da agregação), {quando} (dia e hora do extremo), {cultura}, {fase}.
+# grave_se: com o mesmo cálculo, a partir de que valor a severidade vira "grave" (ignora o horário de silêncio).
+
+- id: geada
+  titulo: Risco de geada
+  quando:
+    - { variavel: temperature_2m, agregacao: minimo, janela: proximas_36h, operador: "<=", valor: 3 }
+  severidade: atencao
+  grave_se: { operador: "<=", valor: 1 }
+  mensagem: "🥶 Risco de geada: mínima prevista de {valor}°C ({quando}). Lavouras jovens e baixadas são as mais afetadas; evite irrigar à noite em baixadas."
+  fonte: "Referência inicial: temperatura de abrigo ≤ 3 °C costuma indicar geada na relva"
+  revisado_por: null
+
+- id: calor
+  titulo: Calor forte
+  quando:
+    - { variavel: temperature_2m, agregacao: maximo, janela: proximas_36h, operador: ">=", valor: 35 }
+  severidade: atencao
+  fases_grave: [florescimento, enchimento]
+  mensagem: "🌡️ Calor forte: máxima de {valor}°C ({quando}). Estresse térmico, principalmente na floração e no enchimento de grão; atenção à água."
+  fonte: "Referência inicial: ≥ 35 °C prejudica floração e enchimento de grãos (milho, soja, feijão)"
+  revisado_por: null
+
+- id: chuva_forte
+  titulo: Chuva forte
+  qualquer:
+    - { variavel: precipitation, agregacao: maximo, janela: proximas_24h, operador: ">=", valor: 20 }
+    - { variavel: precipitation, agregacao: soma, janela: proximas_24h, operador: ">=", valor: 50 }
+  severidade: atencao
+  grave_se: { operador: ">=", valor: 80 }
+  mensagem: "🌧️ Chuva forte prevista: {valor} mm ({quando}). Adie adubação e aplicações; risco de erosão e enxurrada."
+  fonte: "Referência inicial: ≥ 20 mm/h ou ≥ 50 mm/24 h"
+  revisado_por: null
+
+- id: vento_forte
+  titulo: Vento forte
+  quando:
+    - { variavel: wind_gusts_10m, agregacao: maximo, janela: proximas_24h, operador: ">=", valor: 50 }
+  severidade: atencao
+  grave_se: { operador: ">=", valor: 75 }
+  mensagem: "💨 Rajadas de até {valor} km/h ({quando}). Risco de acamamento; não pulverize."
+  fonte: "Referência inicial: rajadas ≥ 50 km/h"
+  revisado_por: null
+
+- id: doenca_fungica
+  titulo: Ambiente favorável a fungos
+  quando:
+    - { variavel: molhamento, agregacao: horas, janela: proximas_48h, operador: ">=", valor: 1, minimo_horas: 20 }
+    - { variavel: temperature_2m, agregacao: media, janela: proximas_48h, operador: ">=", valor: 18 }
+    - { variavel: temperature_2m, agregacao: media, janela: proximas_48h, operador: "<=", valor: 28 }
+  severidade: atencao
+  fases: [vegetativo, florescimento, enchimento]
+  mensagem: "🍄 Umidade alta e temperatura amena nos próximos 2 dias ({valor} h de folha molhada previstas) favorecem doenças fúngicas. Vale vistoriar a lavoura. (Produto e dose só com receituário agronômico.)"
+  fonte: "Referência inicial: ≥ 10 h/dia de molhamento com 18–28 °C por 2 dias"
+  revisado_por: null
+
+- id: ar_seco
+  titulo: Ar muito seco
+  quando:
+    - { variavel: vapour_pressure_deficit, agregacao: maximo, janela: proximas_24h, operador: ">", valor: 2.5 }
+  severidade: info
+  mensagem: "🏜️ Ar muito seco à tarde (VPD {valor} kPa): a planta perde muita água. Evite pulverizar nas horas mais secas."
+  fonte: "Open-Meteo: VPD > 1,6 kPa aumenta a transpiração; referência de atenção 2,5 kPa"
+  revisado_por: null
+
+- id: colheita
+  titulo: Janela de colheita
+  fases: [colheita]
+  quando:
+    - { variavel: precipitation, agregacao: soma, janela: proximas_72h, operador: "<", valor: 2 }
+    - { variavel: relative_humidity_2m, agregacao: minimo, janela: proximas_72h, operador: "<", valor: 60 }
+  severidade: info
+  mensagem: "🌾 Boa janela para colher e secar: só {valor}% de umidade mínima e quase nada de chuva nos próximos 3 dias."
+  fonte: "Referência inicial: ≥ 3 dias com chuva < 1 mm e UR mínima < 60%"
+  revisado_por: null
+
+- id: plantio
+  titulo: Condição de plantio
+  fases: [preparo]
+  quando:
+    - { variavel: soil_moisture_9_to_27cm, agregacao: media, janela: proximas_24h, operador: ">=", valor: 0.2 }
+    - { variavel: precipitation, agregacao: soma, janela: proximas_72h, operador: ">=", valor: 10 }
+  severidade: info
+  mensagem: "🌱 Solo úmido e chuva prevista ({valor} mm em 3 dias): condição favorável à semeadura (confira a janela do zoneamento agrícola da sua região)."
+  fonte: "Referência inicial: umidade do solo e chuva regular prevista; ZARC/Embrapa para a época"
+  revisado_por: null
+
+- id: pulverizacao
+  tipo: janela
+  titulo: Janela de pulverização
+  janela: proximas_24h
+  apenas_dia: true
+  condicoes_hora:
+    - { variavel: wind_speed_10m, operador: ">=", valor: 3 }
+    - { variavel: wind_speed_10m, operador: "<=", valor: 10 }
+    - { variavel: temperature_2m, operador: "<", valor: 30 }
+    - { variavel: relative_humidity_2m, operador: ">", valor: 55 }
+    - { variavel: delta_t, operador: ">=", valor: 2 }
+    - { variavel: delta_t, operador: "<=", valor: 8 }
+    - { variavel: chuva_proximas_2h, operador: "<", valor: 0.2 }
+  severidade: info
+  mensagem_com: "✅ Pulverização: boas horas {janelas} (vento fraco, umidade acima de 55%, sem chuva logo depois)."
+  mensagem_sem: "🚫 Pulverização: nas próximas 24 h não há horário bom (vento, calor, ar seco ou chuva)."
+  fonte: "Referência inicial: vento 3–10 km/h, < 30 °C, UR > 55%, Delta T 2–8, sem chuva nas 2 h seguintes"
+  revisado_por: null
+
+- id: irrigacao
+  tipo: balanco
+  titulo: Irrigação
+  apenas_irrigadas: true
+  dias: 7
+  limite_mm: 25
+  chuva_prevista_dias: 2
+  mensagem_irrigar: "💧 Irrigação: a lavoura perdeu cerca de {deficit} mm a mais do que choveu nos últimos {dias} dias, e só {chuva_prevista} mm estão previstos em 2 dias. Vale irrigar, de preferência cedo ou no fim da tarde."
+  mensagem_esperar: "💧 Irrigação: pode esperar — {chuva_prevista} mm de chuva previstos nos próximos 2 dias devem repor o que falta ({deficit} mm)."
+  mensagem_ok: "💧 Irrigação: sem falta de água por enquanto (balanço de {deficit} mm)."
+  fonte: "FAO-56: ET0 × Kc da fase; limite inicial de 25 mm (ajustar pelo tipo de solo)"
+  revisado_por: null

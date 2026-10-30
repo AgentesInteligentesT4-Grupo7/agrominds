@@ -10,3 +10,8 @@ tmp/
 *.mp3
 *.m4a
 *.flac
+
+# Painel em Angular: dependências e build (refeitos com npm --prefix admin ci && npm --prefix admin run build)
+admin/node_modules/
+admin/dist/
+admin/.angular/

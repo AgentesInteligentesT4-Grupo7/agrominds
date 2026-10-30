@@ -1,0 +1,52 @@
+# Culturas e fases que o bot oferece, com o coeficiente de cultura Kc de cada fase (FAO-56, valores típicos).
+# Kc × ET0 = água que a lavoura perde por dia. VALORES DE REFERÊNCIA: revisar com agrônomo(a) para a região.
+#
+# Cada cultura usa as `fases_padrao` e muda só o que lista em `fases` (ou só as dela, com `so_estas_fases: true`).
+# Para acrescentar uma cultura, copie um bloco e ajuste; o bot passa a oferecer depois de reiniciar.
+
+revisado_por: null   # nome de quem conferiu os valores
+
+fases_padrao:
+  preparo:       { nome: Preparando o plantio, kc: 0 }
+  inicial:       { nome: Plantada / emergência, kc: 0.4 }
+  vegetativo:    { nome: Crescendo, kc: 0.8 }
+  florescimento: { nome: Florindo, kc: 1.15 }
+  enchimento:    { nome: Enchendo grão / fruto, kc: 1.1 }
+  colheita:      { nome: Perto da colheita, kc: 0.5 }
+
+culturas:
+  soja:
+    nome: Soja
+  milho:
+    nome: Milho
+    fases:
+      inicial:       { nome: Plantada / emergência, kc: 0.3 }
+      florescimento: { nome: Pendoando / florindo, kc: 1.2 }
+      enchimento:    { nome: Enchendo grão, kc: 1.2 }
+      colheita:      { nome: Perto da colheita, kc: 0.6 }
+  feijao:
+    nome: Feijão
+    fases:
+      colheita: { nome: Perto da colheita, kc: 0.35 }
+  cafe:
+    nome: Café
+    so_estas_fases: true
+    fases:
+      preparo:       { nome: Lavoura nova / plantio, kc: 0.9 }
+      vegetativo:    { nome: Crescimento / pós-colheita, kc: 0.95 }
+      florescimento: { nome: Florada, kc: 1.05 }
+      enchimento:    { nome: Granação, kc: 1.1 }
+      colheita:      { nome: Maturação / colheita, kc: 0.95 }
+  hortalicas:
+    nome: Hortaliças
+    fases:
+      florescimento: { nome: Desenvolvimento pleno, kc: 1.05 }
+      enchimento:    { nome: Formação da parte colhida, kc: 1.0 }
+      colheita:      { nome: Perto da colheita, kc: 0.9 }
+  pastagem:
+    nome: Pastagem
+    so_estas_fases: true
+    fases:
+      preparo:       { nome: Formação / reforma, kc: 0.4 }
+      vegetativo:    { nome: Em uso / crescendo, kc: 0.85 }
+      florescimento: { nome: Pastagem fechada, kc: 1.0 }
