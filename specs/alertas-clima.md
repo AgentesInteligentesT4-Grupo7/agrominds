@@ -1,7 +1,11 @@
 # Spec: Alertas de clima para a lavoura pelo Telegram
 
 **Versão:** 0.2 (rascunho para o grupo; 0.2 acrescenta o painel administrativo em Angular)
-**Status:** Proposta, nada implementado
+**Status:** Implementada em parte (30/10/2026):
+- **Feito:** pré-requisitos no tocador (§7.1); clima básico; lavouras, regras, modos de envio, sem repetição e
+  silêncio; balanço hídrico; painel Angular com usuários, envios e gráficos; cartão do tempo em imagem.
+- **Falta:** Agrofit, Bioinsumos e Agritec (precisam das chaves da Embrapa); avisos do INMET; várias lavouras por
+  pessoa (hoje uma); validação das regras por agrônomo(a).
 **Autor:** Grupo 7 (rascunho: K7 Agent)
 **Data:** 2026-10-30
 **Reviewers:** Parreira, Grupo 7 e, para as regras agronômicas, um(a) agrônomo(a)
