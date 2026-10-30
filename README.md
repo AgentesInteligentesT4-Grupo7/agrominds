@@ -14,8 +14,10 @@ Proposta completa: [specs/alertas-clima.md](specs/alertas-clima.md).
     - `/clima` e o **boletim** dos horários escolhidos: agora, próximos dias, gráfico de 24 h, avisos e recomendações;
     - `/previsao`: o período que a pessoa escolher (hoje, amanhã, fim de semana, 3, 7 ou 14 dias);
     - `/plantas`: cada planta com a fase, a colheita estimada e a janela de plantio;
-    - `/calendario` e `/plantar`: a **época de plantio no município**, pelo zoneamento oficial, e o que dá para plantar
-      agora (todo mês, junto do primeiro boletim, vai a sugestão do mês);
+    - `/calendario` e `/plantar`: a **época de plantio no município**, pelo zoneamento oficial, **quando colhe** e quanto
+      tempo leva, e o que dá para plantar agora (`/calendario uva, café` mostra só essas; todo mês, junto do primeiro
+      boletim, vai a sugestão do mês);
+    - a **água da semana** de cada planta: quanto ela deve usar (previsão × fase) e quanto a chuva cobre;
     - **alertas** de geada, calor, chuva forte, vento e doença fúngica;
   - recomendações: janela de pulverização, irrigar ou esperar a chuva (balanço de água), colheita, plantio;
   - conversa livre ("vai chover no fim de semana?", "o que planto agora na horta?", "plantei milho dia 10"): o agente

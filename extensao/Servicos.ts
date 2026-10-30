@@ -195,7 +195,9 @@ export async function minhasPlantas(c: Base, userId: string, agora = new Date(),
   const lugar = lugarOuErro(c, userId, lugarId);
   const lavouras = c.banco.lavouras(userId, lugar.id);
   const { linhas } = linhasDoCalendario(c, userId, { lugarId: lugar.id });
-  const dados = dadosPlantas(lugar, lavouras, c.plantas(), c.culturas(), linhas, hoje, !c.zarc.vazio());
-  const texto = [`🌱 Minhas plantas · ${lugar.nome}`, '', ...dados.plantas.map((p) => `• ${p.nome}${p.fase ? ` — ${p.fase.toLowerCase()}` : ''}${p.irrigada ? ', irrigada' : ''}${p.colheita ? `, colheita estimada ${p.colheita}` : ''}\n  ${p.janela}`)].join('\n');
+  // Sem previsão (Open-Meteo fora do ar), o resto da imagem sai igual, só sem a água da semana.
+  const previsao = await c.meteo.previsao(lugar.celula).catch(() => undefined);
+  const dados = dadosPlantas(lugar, lavourasAtuais(lavouras, c.plantas(), c.culturas(), hoje), c.plantas(), c.culturas(), linhas, hoje, !c.zarc.vazio(), previsao);
+  const texto = [`🌱 Minhas plantas · ${lugar.nome}`, '', ...dados.plantas.map((p) => `• ${p.nome}${p.fase ? ` — ${p.fase.toLowerCase()}` : ''}${p.irrigada ? ', irrigada' : ''}${p.colheita ? `, colheita estimada ${p.colheita}` : ''}\n  ${p.janela}${p.tempo ? `\n  ${p.tempo}` : ''}${p.agua ? `\n  ${p.agua}` : ''}`)].join('\n');
   return { texto, mensagem: await c.layouts.mensagem('plantas', dados, `🌱 Minhas plantas · ${lugar.nome}`, texto) };
 }

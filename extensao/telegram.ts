@@ -305,9 +305,11 @@ export function registrarTelegram(c: Contexto): void {
     );
   });
 
-  k7.telegram.comando('calendario', 'Época de plantio na sua cidade (ex.: /calendario feijão, couve)', async (ctx) => {
+  k7.telegram.comando('calendario', 'Época de plantio e colheita (ex.: /calendario uva, café)', async (ctx) => {
     if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a localização de onde fica a plantação (📎 → Localização: arraste o mapa até o lugar; não precisa estar lá).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
-    await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, { incluir: nomesPedidos(ctx.args) }), BOTOES_CALENDARIO));
+    // Com nomes ("/calendario uva, café"): só essas plantas; sem nomes, as da pessoa.
+    const pedidas = nomesPedidos(ctx.args);
+    await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, pedidas.length ? { plantas: [], incluir: pedidas } : {}), BOTOES_CALENDARIO));
   });
 
   k7.telegram.comando('plantar', 'O que dá para plantar agora (ex.: /plantar feijão, couve)', async (ctx) => {

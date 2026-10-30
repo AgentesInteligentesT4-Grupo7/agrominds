@@ -1,6 +1,6 @@
 import { UserFacingError } from './erros.js';
 import type { FitaToolCtx, TelegramResposta } from './k7.js';
-import { balancoHidrico } from './Regras.js';
+import { aguaDaSemana, balancoHidrico } from './Regras.js';
 import { somarDias } from './Plantas.js';
 import { type Contexto, acharLugar, calendarioDe, hojeLocal, lugarOuErro, minhasPlantas, plantasDe, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
 import { PERIODOS, ehPeriodo } from './Visual.js';
@@ -67,7 +67,8 @@ export function registrarFerramentas(c: Contexto): void {
     description:
       'Época de plantar no município da pessoa, pelo zoneamento oficial (ZARC, MAPA/Embrapa). `sugerir`: a lista do que dá para plantar ' +
       'agora (em ordem alfabética; opcionalmente só da horta ou só da lavoura). `plantas`: plantas que a pessoa perguntou; com `sugerir`, ' +
-      'entram a mais na tabela, mesmo fora de época ou sem dado. Use para "quando planto feijão?", "o que planto agora na horta?" e, ' +
+      'entram a mais na tabela, mesmo fora de época ou sem dado; sem `sugerir`, a tabela mostra só essas ("me mostra só uva e café"). ' +
+      'A tabela traz também quando colhe (plantio + tempo médio) e quanto tempo leva. Use para "quando planto feijão?", "o que planto agora na horta?" e, ' +
       'depois da lista, "e o tomate?" (sugerir: true, plantas: ["tomate"]).',
     parameters: {
       type: 'object',
@@ -119,7 +120,11 @@ export function registrarFerramentas(c: Contexto): void {
           const kc = cultura?.fases[l.fase]?.kc ?? 1;
           const b = balancoHidrico(p, kc, 7, 2, l.irrigouEm);
           const nome = c.plantas().find((x) => x.id === l.planta)?.nome ?? l.planta;
-          return [`${nome}: fase ${cultura?.fases[l.fase]?.nome ?? l.fase} (Kc ${kc}), ${l.irrigada ? 'irrigada' : 'sem irrigação'} · déficit ${b.deficit} mm em 7 dias · chuva prevista em 2 dias ${b.chuvaPrevista} mm`];
+          const semana = aguaDaSemana(p, kc);
+          return [
+            `${nome}: fase ${cultura?.fases[l.fase]?.nome ?? l.fase} (Kc ${kc}), ${l.irrigada ? 'irrigada' : 'sem irrigação'} · déficit ${b.deficit} mm em 7 dias · chuva prevista em 2 dias ${b.chuvaPrevista} mm`,
+            `  Próximos 7 dias: deve usar ~${semana.usa} mm (litros por m²), chuva prevista ${semana.chuva} mm, faltam ~${semana.falta} mm`,
+          ];
         }),
         'Valores de referência (regras em revisão por agrônomo); não substituem a avaliação no local.',
       ].join('\n');

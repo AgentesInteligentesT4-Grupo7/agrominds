@@ -1,7 +1,7 @@
 import type { Lavoura, Lugar } from './Banco.js';
 import { type Previsao, horaLocal, somarHoras } from './OpenMeteo.js';
 import { type LinhaCalendario, type Planta, decendioDe, faixas, faseAtual, janelaDeColheita, sugestoes, textoCiclo, textoFaixa } from './Plantas.js';
-import type { Cultura, Resultado } from './Regras.js';
+import { type Cultura, type Resultado, aguaDaSemana } from './Regras.js';
 
 /** Dados de cada layout (layouts/*.html): o que a página espera em `window.DADOS`. */
 
@@ -199,7 +199,7 @@ const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'o
 const ddmes = (data: string) => `${Number(data.slice(8, 10))}/${MESES[Number(data.slice(5, 7)) - 1]}`;
 
 /** Layout `plantas`: cada planta com fase, ciclo e a janela de plantio do município. */
-export function dadosPlantas(lugar: Lugar, lavouras: Lavoura[], catalogo: Planta[], culturas: Cultura[], linhas: LinhaCalendario[], hoje: string, temZarc: boolean) {
+export function dadosPlantas(lugar: Lugar, lavouras: Lavoura[], catalogo: Planta[], culturas: Cultura[], linhas: LinhaCalendario[], hoje: string, temZarc: boolean, previsao?: Previsao) {
   const dec = decendioDe(hoje);
   return {
     titulo: 'Minhas plantas',
@@ -236,10 +236,20 @@ export function dadosPlantas(lugar: Lugar, lavouras: Lavoura[], catalogo: Planta
         risco,
         colheitaJanela: risco && !planta?.perene ? (janelaDeColheita(risco, planta?.cicloDias) ?? null) : null,
         tempo: planta?.perene ? 'Planta perene: produz por anos' : planta?.cicloDias ? `Leva ${textoCiclo(planta.cicloDias)} do plantio à colheita` : null,
+        agua: textoAgua(previsao, cultura?.fases[f.fase]?.kc, l.irrigada),
       };
     }),
     rodape: 'Janelas: ZARC (MAPA/Embrapa), solo de textura média · colheita estimada pelo ciclo médio (referência a revisar)',
   };
+}
+
+/** "💧 Nesta semana usa ~25 mm (25 L por m²); chuva prevista 10 mm: irrigar ~15 mm" (sem Kc ou sem previsão, nada). */
+function textoAgua(previsao: Previsao | undefined, kc: number | undefined, irrigada: boolean): string | null {
+  if (!previsao || !kc) return null;
+  const a = aguaDaSemana(previsao, kc);
+  const base = `💧 Nos próximos 7 dias deve usar ~${a.usa} mm de água (${a.usa} L por m²); chuva prevista: ${a.chuva} mm`;
+  if (!a.falta) return `${base}. A chuva deve bastar.`;
+  return `${base}. ${irrigada ? `Irrigar ~${a.falta} mm (${a.falta} L por m²) na semana, em 2 ou 3 vezes` : `Faltam ~${a.falta} mm que a chuva não cobre`}.`;
 }
 
 /** Layout `calendario`: as plantas pedidas no município, com o que dá para plantar agora em destaque. */

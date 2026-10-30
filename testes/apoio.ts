@@ -234,7 +234,7 @@ export function tabuaZarc(): string[] {
     linha('Banana Prata Implantação', '13', '2', '5208707', 'GO', 'Goiânia', 'Irrigado', faixa(1, 36)),
     linha('Soja', '21', '13', '4314902', 'RS', 'Porto Alegre', 'Sequeiro', faixa(29, 36)),
     // Cultura fora do catálogo: ignorada.
-    linha('Palma Forrageira', '13', '2', '5208707', 'GO', 'Goiânia', 'Sequeiro', faixa(1, 36)),
+    linha('Sisal', '13', '2', '5208707', 'GO', 'Goiânia', 'Sequeiro', faixa(1, 36)),
   ];
 }
 

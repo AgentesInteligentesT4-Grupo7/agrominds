@@ -144,6 +144,20 @@ describe('Conversa no Telegram', () => {
     assert.ok(dadosDaPagina(k7.htmls.at(-1)!).linhas.some((l: { nome: string; pedida?: boolean }) => l.nome === 'Tomate' && l.pedida));
   });
 
+  it('/calendario com nomes mostra só essas plantas; Minhas plantas traz a água da semana', async () => {
+    const { k7, banco } = await montar(() => previsaoSintetica('2026-10-30T09:00'));
+    banco.salvarLugar('50', 'Goiânia/GO', -16.69, -49.26);
+    banco.salvarLavoura('50', 'soja', { cultura: 'soja', fase: 'florescimento' });
+    const ana = k7.pessoa('50');
+    await ana.comando('calendario', 'uva, banana');
+    const cal = dadosDaPagina(k7.htmls.at(-1)!);
+    assert.deepEqual([...new Set(cal.linhas.map((l: { nome: string }) => l.nome))], ['Uva', 'Banana'], 'só as pedidas, sem a soja da pessoa');
+    assert.equal(cal.linhas.find((l: { nome: string }) => l.nome === 'Banana').tempo, 'perene');
+    await ana.comando('plantas');
+    const soja = dadosDaPagina(k7.htmls.at(-1)!).plantas[0];
+    assert.match(soja.agua, /^💧 Nos próximos 7 dias deve usar ~\d+ mm de água \(\d+ L por m²\); chuva prevista: 0 mm\. Faltam ~\d+ mm que a chuva não cobre\.$/);
+  });
+
   it('/alertas e /esquecer', async () => {
     const { k7, banco } = await montar(() => previsaoSintetica('2026-10-30T09:00'));
     banco.salvarLugar('50', 'Goiânia/GO', -16.69, -49.26);

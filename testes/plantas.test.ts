@@ -69,7 +69,7 @@ describe('ZARC (zoneamento agrícola)', () => {
     assert.deepEqual([soja!.manejo, soja!.solo, soja!.risco[25], soja!.risco[29], soja!.risco[0], soja!.risco[5]], ['Sequeiro', 'medio', 30, 20, 20, 0]);
     assert.equal(z.janelas('5208707', ['Soja'], { solo: 'arenoso' })[0]!.risco[25], 0, 'solo arenoso: janela menor');
     assert.equal(z.janelas('5208707', ['Banana Prata Implantação'])[0]!.manejo, 'Irrigado', 'sem janela em sequeiro: vale a irrigada');
-    assert.deepEqual(z.janelas('5208707', ['Palma Forrageira']), [], 'fora do catálogo: não importa');
+    assert.deepEqual(z.janelas('5208707', ['Sisal']), [], 'fora do catálogo: não importa');
   });
 
   it('reimportar o mesmo arquivo substitui; o outro arquivo continua', async () => {

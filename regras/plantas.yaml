@@ -200,6 +200,110 @@ plantas:
     perene: true
     zarc:
       - culturas: [Abacaxi]
+  uva:
+    nome: Uva
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    # Na tábua, a uva não vem como "Implantação": confira na portaria se as datas são de plantio ou de poda.
+    zarc:
+      - nome: de mesa
+        culturas: [Uva Mesa]
+      - nome: de mesa (2ª safra)
+        culturas: [Uva Mesa 2ª Safra]
+      - nome: para suco/vinho
+        culturas: [Uva Industrial]
+  caju:
+    nome: Caju
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Caju Anão Implantação]
+  acai:
+    nome: Açaí
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Açaí Implatação]
+  cacau:
+    nome: Cacau
+    grupo: lavoura
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Cacau Implantação, Cacau SAF Implantação]
+  maca:
+    nome: Maçã
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Maçã Implantação]
+  pessego:
+    nome: Pêssego
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Pêssego Implantação Mesa, Pêssego Implantação Indústria]
+  tangerina:
+    nome: Tangerina (mexerica)
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Tangerina Implantação, Pomelo Implantação, Lima Implantação]
+  azeitona:
+    nome: Azeitona (oliveira)
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Oliva (Azeitona)]
+  gergelim:
+    nome: Gergelim
+    grupo: lavoura
+    cultura: graos
+    ciclo_dias: 100
+    zarc:
+      - culturas: [Gergelim]
+  grao_de_bico:
+    nome: Grão-de-bico
+    grupo: lavoura
+    cultura: graos
+    ciclo_dias: 110
+    zarc:
+      - culturas: [Grão de Bico]
+  canola:
+    nome: Canola
+    grupo: lavoura
+    cultura: graos
+    ciclo_dias: 130
+    zarc:
+      - culturas: [Canola]
+  milheto:
+    nome: Milheto
+    grupo: lavoura
+    cultura: graos
+    ciclo_dias: 90
+    zarc:
+      - culturas: [Milheto]
+  centeio:
+    nome: Centeio
+    grupo: lavoura
+    cultura: graos
+    ciclo_dias: 120
+    zarc:
+      - culturas: [Centeio]
+  palma:
+    nome: Palma forrageira
+    grupo: lavoura
+    cultura: pastagem
+    perene: true
+    zarc:
+      - culturas: [Palma Forrageira]
   # Sem zoneamento oficial: recebem os alertas do tempo, mas o calendário diz que não há dado do ZARC.
   alface:
     nome: Alface

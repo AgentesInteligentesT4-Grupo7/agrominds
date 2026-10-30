@@ -312,6 +312,21 @@ export function balancoHidrico(p: Previsao, kc: number, dias: number, diasPrevis
   return { deficit: round(deficit, 1), chuvaPrevista: round(chuvaPrevista, 1), serie };
 }
 
+/**
+ * Água da semana que vem: quanto a planta deve usar (ET0 previsto × Kc da fase, FAO-56) e quanto a chuva prevista
+ * cobre. 1 mm = 1 litro por metro quadrado. É conta com a previsão e o Kc de referência, não medição no local.
+ */
+export function aguaDaSemana(p: Previsao, kc: number, dias = 7, agora = new Date()): { usa: number; chuva: number; falta: number } {
+  const hoje = horaLocal(agora, p.utcOffsetSeconds).slice(0, 10);
+  const time = p.dias.time;
+  const et0 = p.dias.et0_fao_evapotranspiration as Array<number | null>;
+  const chuva = p.dias.precipitation_sum as Array<number | null>;
+  const idx = time.flatMap((d, i) => (d >= hoje ? [i] : [])).slice(0, dias);
+  const usa = idx.reduce((s, i) => s + (et0[i] ?? 0) * kc, 0);
+  const vem = idx.reduce((s, i) => s + (chuva[i] ?? 0), 0);
+  return { usa: round(usa, 0), chuva: round(vem, 0), falta: round(Math.max(0, usa - vem), 0) };
+}
+
 /** Horas boas seguidas viram faixas legíveis: "hoje 6h–10h, amanhã 7h–9h". */
 function faixas(horas: string[], agoraLocal: string): string[] {
   const out: string[] = [];

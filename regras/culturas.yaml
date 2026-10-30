@@ -62,6 +62,8 @@ culturas:
       colheita:      { nome: Perto da colheita, kc: 0.6 }
   sorgo:
     nome: Sorgo
+  graos:
+    nome: Outros grãos
   girassol:
     nome: Girassol
   amendoim:
