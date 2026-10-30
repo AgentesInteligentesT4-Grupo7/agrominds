@@ -3,9 +3,21 @@ import type { FitaSql } from './k7.js';
 export type ModoEnvio = 'boletim' | 'hora' | 'alertas' | 'pedir';
 export type Severidade = 'info' | 'atencao' | 'grave';
 
+/**
+ * Um lugar onde a pessoa planta (ela pode ter vários: a fazenda, o sítio, a horta de casa). Não precisa ser onde ela
+ * está: no Telegram dá para arrastar o mapa ao mandar a localização; no chat web, buscar a cidade ou colar a coordenada.
+ */
 export interface Lugar {
+  id: number;
   userId: string;
+  /** Como aparece: "Sítio Boa Vista (Goiânia/GO)", ou só a cidade quando não tem apelido. */
   nome: string;
+  /** Nome que a pessoa deu ("Sítio Boa Vista"); null = só a cidade. */
+  apelido: string | null;
+  /** Município da coordenada ("Goiânia/GO"), ou a coordenada quando não deu para saber. */
+  cidade: string;
+  /** O lugar em uso: comandos e perguntas sem lugar falam dele. */
+  atual: boolean;
   lat: number;
   lon: number;
   /** Célula de grade (0,1°): lugares próximos dividem a mesma previsão. */
@@ -19,6 +31,8 @@ export interface Lugar {
 export interface Lavoura {
   id: number;
   userId: string;
+  /** Lugar onde está plantada. */
+  lugarId: number;
   /** Planta de regras/plantas.yaml (ex.: alface, milho). */
   planta: string;
   /** Cultura de regras/culturas.yaml (fases e Kc). */
@@ -57,13 +71,15 @@ export interface Envio {
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS lugares (
-    user_id TEXT PRIMARY KEY, nome TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, celula TEXT NOT NULL, uf TEXT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, apelido TEXT, cidade TEXT NOT NULL, lat REAL NOT NULL,
+    lon REAL NOT NULL, celula TEXT NOT NULL, uf TEXT, atual INTEGER NOT NULL DEFAULT 0,
     atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE INDEX IF NOT EXISTS idx_lugares_user ON lugares (user_id, id);
   CREATE TABLE IF NOT EXISTS lavouras (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, planta TEXT NOT NULL, cultura TEXT NOT NULL,
-    fase TEXT NOT NULL, irrigada INTEGER NOT NULL DEFAULT 0, irrigou_em TEXT, plantio TEXT, pendente INTEGER NOT NULL DEFAULT 0,
-    atualizado_em TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE (user_id, planta)
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, lugar_id INTEGER NOT NULL, planta TEXT NOT NULL,
+    cultura TEXT NOT NULL, fase TEXT NOT NULL, irrigada INTEGER NOT NULL DEFAULT 0, irrigou_em TEXT, plantio TEXT,
+    pendente INTEGER NOT NULL DEFAULT 0, atualizado_em TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE (lugar_id, planta)
   );
   CREATE TABLE IF NOT EXISTS preferencias (
     user_id TEXT PRIMARY KEY, modo TEXT NOT NULL DEFAULT 'boletim', horarios TEXT NOT NULL DEFAULT '[6,18]',
@@ -98,44 +114,115 @@ export function celulaDe(lat: number, lon: number): string {
 /** Tabelas da AgroMinds no banco próprio da fita (k7.sql). */
 export class Banco {
   constructor(private readonly sql: FitaSql) {
-    // Versão 0.2 (uma lavoura por pessoa, sem planta): vira a primeira planta de cada pessoa.
-    const antigas = sql.all<{ name: string }>('PRAGMA table_info(lavouras)').map((c) => c.name);
-    const migrar = antigas.length > 0 && !antigas.includes('planta');
-    if (migrar) sql.exec('ALTER TABLE lavouras RENAME TO lavouras_v1');
+    // Versões antigas: 0.2 (uma lavoura por pessoa, sem planta), 0.3 (plantas sem lugar) e um lugar por pessoa.
+    const colunas = (tabela: string) => sql.all<{ name: string }>(`PRAGMA table_info(${tabela})`).map((c) => c.name);
+    const lavouras = colunas('lavouras');
+    const lugares = colunas('lugares');
+    const v1 = lavouras.length > 0 && !lavouras.includes('planta');
+    const v2 = lavouras.length > 0 && lavouras.includes('planta') && !lavouras.includes('lugar_id');
+    const umLugar = lugares.length > 0 && !lugares.includes('id');
+    if (v1) sql.exec('ALTER TABLE lavouras RENAME TO lavouras_v1');
+    if (v2) sql.exec('ALTER TABLE lavouras RENAME TO lavouras_v2');
+    if (umLugar) sql.exec('ALTER TABLE lugares RENAME TO lugares_v1');
     sql.exec(SCHEMA);
-    if (migrar) {
-      sql.exec(`INSERT INTO lavouras (user_id, planta, cultura, fase, irrigada, irrigou_em, atualizado_em)
-        SELECT user_id, cultura, cultura, fase, irrigada, irrigou_em, atualizado_em FROM lavouras_v1; DROP TABLE lavouras_v1;`);
-    }
-    if (!sql.all<{ name: string }>('PRAGMA table_info(lugares)').some((c) => c.name === 'uf')) sql.exec('ALTER TABLE lugares ADD COLUMN uf TEXT');
+    sql.transacao(() => {
+      if (umLugar) {
+        const uf = lugares.includes('uf') ? 'uf' : 'NULL';
+        sql.exec(`INSERT INTO lugares (user_id, cidade, lat, lon, celula, uf, atual, atualizado_em)
+          SELECT user_id, nome, lat, lon, celula, ${uf}, 1, atualizado_em FROM lugares_v1; DROP TABLE lugares_v1;`);
+      }
+      const lugarDe = '(SELECT id FROM lugares l WHERE l.user_id = v.user_id AND l.atual = 1)';
+      if (v1) {
+        sql.exec(`INSERT INTO lavouras (user_id, lugar_id, planta, cultura, fase, irrigada, irrigou_em, atualizado_em)
+          SELECT user_id, ${lugarDe}, cultura, cultura, fase, irrigada, irrigou_em, atualizado_em FROM lavouras_v1 v WHERE ${lugarDe} IS NOT NULL;
+          DROP TABLE lavouras_v1;`);
+      }
+      if (v2) {
+        sql.exec(`INSERT INTO lavouras (user_id, lugar_id, planta, cultura, fase, irrigada, irrigou_em, plantio, pendente, atualizado_em)
+          SELECT user_id, ${lugarDe}, planta, cultura, fase, irrigada, irrigou_em, plantio, pendente, atualizado_em FROM lavouras_v2 v WHERE ${lugarDe} IS NOT NULL;
+          DROP TABLE lavouras_v2;`);
+      }
+    });
   }
 
-  /** `uf` vem do endereço da localização; sem ele, sai do nome ("Goiânia/GO"). */
-  salvarLugar(userId: string, nome: string, lat: number, lon: number, uf?: string | null): Lugar {
-    // Só 2 casas (~1 km): o suficiente para o tempo, sem guardar a coordenada exata da pessoa.
+  /**
+   * Novo lugar (ou, com `id`, muda a coordenada de um que já existe), e ele passa a ser o atual. `uf` vem do endereço
+   * da localização; sem ele, sai da cidade ("Goiânia/GO").
+   */
+  salvarLugar(userId: string, cidade: string, lat: number, lon: number, uf?: string | null, opcoes: { id?: number; apelido?: string | null } = {}): Lugar {
+    // Só 2 casas (~1 km): o suficiente para o tempo, sem guardar a coordenada exata.
     const la = Math.round(lat * 100) / 100;
     const lo = Math.round(lon * 100) / 100;
-    const sigla = uf ?? /\/([A-Z]{2})$/.exec(nome)?.[1] ?? null;
-    this.sql.run(
-      `INSERT INTO lugares (user_id, nome, lat, lon, celula, uf) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET nome = excluded.nome, lat = excluded.lat, lon = excluded.lon, celula = excluded.celula, uf = excluded.uf, atualizado_em = datetime('now')`,
-      userId, nome, la, lo, celulaDe(la, lo), sigla,
-    );
-    return this.lugar(userId)!;
+    const sigla = uf ?? /\/([A-Z]{2})$/.exec(cidade)?.[1] ?? null;
+    const existente = opcoes.id !== undefined ? this.lugarPorId(userId, opcoes.id) : undefined;
+    let id: number;
+    if (existente) {
+      this.sql.run(
+        "UPDATE lugares SET cidade = ?, lat = ?, lon = ?, celula = ?, uf = ?, apelido = COALESCE(?, apelido), atualizado_em = datetime('now') WHERE id = ?",
+        cidade, la, lo, celulaDe(la, lo), sigla, opcoes.apelido ?? null, existente.id,
+      );
+      id = existente.id;
+    } else {
+      id = Number(this.sql.run('INSERT INTO lugares (user_id, apelido, cidade, lat, lon, celula, uf) VALUES (?, ?, ?, ?, ?, ?, ?)', userId, opcoes.apelido?.trim() || null, cidade, la, lo, celulaDe(la, lo), sigla).lastInsertRowid);
+    }
+    this.usarLugar(userId, id);
+    return this.lugarPorId(userId, id)!;
   }
 
+  /** O lugar atual da pessoa (o último escolhido). */
   lugar(userId: string): Lugar | undefined {
-    const r = this.sql.get<LugarRow>('SELECT * FROM lugares WHERE user_id = ?', userId);
+    const r = this.sql.get<LugarRow>('SELECT * FROM lugares WHERE user_id = ? ORDER BY atual DESC, id DESC LIMIT 1', userId);
     return r && toLugar(r);
   }
 
-  lugares(): Lugar[] {
-    return this.sql.all<LugarRow>('SELECT * FROM lugares ORDER BY atualizado_em DESC').map(toLugar);
+  lugarPorId(userId: string, id: number): Lugar | undefined {
+    const r = this.sql.get<LugarRow>('SELECT * FROM lugares WHERE user_id = ? AND id = ?', userId, id);
+    return r && toLugar(r);
   }
 
-  /** Cria ou muda uma planta da pessoa (o que não vier em `dados` fica como estava). */
-  salvarLavoura(userId: string, planta: string, dados: Partial<Pick<Lavoura, 'cultura' | 'fase' | 'irrigada' | 'plantio' | 'pendente'>> = {}): Lavoura {
-    const atual = this.lavoura(userId, planta);
+  /** Os lugares da pessoa, na ordem em que foram cadastrados. */
+  lugaresDe(userId: string): Lugar[] {
+    return this.sql.all<LugarRow>('SELECT * FROM lugares WHERE user_id = ? ORDER BY id', userId).map(toLugar);
+  }
+
+  /** Todos os lugares de todo mundo (notificações, mapa do painel). */
+  todosLugares(): Lugar[] {
+    return this.sql.all<LugarRow>('SELECT * FROM lugares ORDER BY user_id, id').map(toLugar);
+  }
+
+  usarLugar(userId: string, id: number): boolean {
+    if (!this.lugarPorId(userId, id)) return false;
+    this.sql.run('UPDATE lugares SET atual = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE user_id = ?', id, userId);
+    return true;
+  }
+
+  renomearLugar(userId: string, id: number, apelido: string | null): boolean {
+    return this.sql.run('UPDATE lugares SET apelido = ? WHERE user_id = ? AND id = ?', apelido?.trim().slice(0, 40) || null, userId, id).changes > 0;
+  }
+
+  /** Apaga o lugar e as plantas dele; se era o atual, o mais recente que sobrou vira o atual. */
+  removerLugar(userId: string, id: number): boolean {
+    const era = this.lugarPorId(userId, id);
+    if (!era) return false;
+    this.sql.transacao(() => {
+      this.sql.run('DELETE FROM lavouras WHERE user_id = ? AND lugar_id = ?', userId, id);
+      this.sql.run('DELETE FROM lugares WHERE user_id = ? AND id = ?', userId, id);
+    });
+    const resto = this.lugaresDe(userId).at(-1);
+    if (era.atual && resto) this.usarLugar(userId, resto.id);
+    return true;
+  }
+
+  private lugarIdDe(userId: string, lugarId?: number): number {
+    const id = lugarId ?? this.lugar(userId)?.id;
+    if (id === undefined) throw new Error('essa pessoa ainda não tem um lugar cadastrado');
+    return id;
+  }
+
+  /** Cria ou muda uma planta num lugar da pessoa (padrão: o atual); o que não vier em `dados` fica como estava. */
+  salvarLavoura(userId: string, planta: string, dados: Partial<Pick<Lavoura, 'cultura' | 'fase' | 'irrigada' | 'plantio' | 'pendente'>> = {}, lugarId?: number): Lavoura {
+    const lugar = this.lugarIdDe(userId, lugarId);
+    const atual = this.lavoura(userId, planta, lugar);
     const l = {
       cultura: dados.cultura ?? atual?.cultura ?? planta,
       fase: dados.fase ?? atual?.fase ?? 'vegetativo',
@@ -144,32 +231,39 @@ export class Banco {
       pendente: dados.pendente ?? atual?.pendente ?? false,
     };
     this.sql.run(
-      `INSERT INTO lavouras (user_id, planta, cultura, fase, irrigada, plantio, pendente) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(user_id, planta) DO UPDATE SET cultura = excluded.cultura, fase = excluded.fase, irrigada = excluded.irrigada,
+      `INSERT INTO lavouras (user_id, lugar_id, planta, cultura, fase, irrigada, plantio, pendente) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(lugar_id, planta) DO UPDATE SET cultura = excluded.cultura, fase = excluded.fase, irrigada = excluded.irrigada,
          plantio = excluded.plantio, pendente = excluded.pendente, atualizado_em = datetime('now')`,
-      userId, planta, l.cultura, l.fase, l.irrigada ? 1 : 0, l.plantio, l.pendente ? 1 : 0,
+      userId, lugar, planta, l.cultura, l.fase, l.irrigada ? 1 : 0, l.plantio, l.pendente ? 1 : 0,
     );
-    return this.lavoura(userId, planta)!;
+    return this.lavoura(userId, planta, lugar)!;
   }
 
-  removerLavoura(userId: string, planta: string): void {
-    this.sql.run('DELETE FROM lavouras WHERE user_id = ? AND planta = ?', userId, planta);
+  removerLavoura(userId: string, planta: string, lugarId?: number): void {
+    const lugar = lugarId ?? this.lugar(userId)?.id;
+    if (lugar !== undefined) this.sql.run('DELETE FROM lavouras WHERE user_id = ? AND lugar_id = ? AND planta = ?', userId, lugar, planta);
   }
 
-  /** "Irriguei": zera a conta de água de uma planta ou, sem `planta`, de todas as irrigadas. */
-  irrigou(userId: string, planta?: string): void {
-    if (planta) this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ? AND planta = ?", userId, planta);
-    else this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ? AND irrigada = 1", userId);
+  /** "Irriguei": zera a conta de água de uma planta ou, sem `planta`, de todas as irrigadas do lugar (padrão: o atual). */
+  irrigou(userId: string, planta?: string, lugarId?: number): void {
+    const lugar = lugarId ?? this.lugar(userId)?.id;
+    if (lugar === undefined) return;
+    if (planta) this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ? AND lugar_id = ? AND planta = ?", userId, lugar, planta);
+    else this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ? AND lugar_id = ? AND irrigada = 1", userId, lugar);
   }
 
-  lavoura(userId: string, planta: string): Lavoura | undefined {
-    const r = this.sql.get<LavouraRow>('SELECT * FROM lavouras WHERE user_id = ? AND planta = ?', userId, planta);
+  lavoura(userId: string, planta: string, lugarId?: number): Lavoura | undefined {
+    const lugar = lugarId ?? this.lugar(userId)?.id;
+    if (lugar === undefined) return undefined;
+    const r = this.sql.get<LavouraRow>('SELECT * FROM lavouras WHERE user_id = ? AND lugar_id = ? AND planta = ?', userId, lugar, planta);
     return r && toLavoura(r);
   }
 
-  /** As plantas da pessoa, na ordem em que foram escolhidas. */
-  lavouras(userId: string): Lavoura[] {
-    return this.sql.all<LavouraRow>('SELECT * FROM lavouras WHERE user_id = ? ORDER BY id', userId).map(toLavoura);
+  /** As plantas de um lugar da pessoa (padrão: o atual), na ordem em que foram escolhidas. */
+  lavouras(userId: string, lugarId?: number): Lavoura[] {
+    const lugar = lugarId ?? this.lugar(userId)?.id;
+    if (lugar === undefined) return [];
+    return this.sql.all<LavouraRow>('SELECT * FROM lavouras WHERE user_id = ? AND lugar_id = ? ORDER BY id', userId, lugar).map(toLavoura);
   }
 
   preferencias(userId: string): Preferencias {
@@ -244,20 +338,36 @@ export class Banco {
 export const PESO: Record<Severidade, number> = { info: 0, atencao: 1, grave: 2 };
 
 interface LugarRow {
+  id: number;
   user_id: string;
-  nome: string;
+  apelido: string | null;
+  cidade: string;
   lat: number;
   lon: number;
   celula: string;
   uf: string | null;
+  atual: number;
   atualizado_em: string;
 }
 
-const toLugar = (r: LugarRow): Lugar => ({ userId: r.user_id, nome: r.nome, lat: r.lat, lon: r.lon, celula: r.celula, uf: r.uf ?? null, atualizadoEm: r.atualizado_em });
+const toLugar = (r: LugarRow): Lugar => ({
+  id: r.id,
+  userId: r.user_id,
+  nome: r.apelido ? `${r.apelido} (${r.cidade})` : r.cidade,
+  apelido: r.apelido,
+  cidade: r.cidade,
+  atual: r.atual === 1,
+  lat: r.lat,
+  lon: r.lon,
+  celula: r.celula,
+  uf: r.uf ?? null,
+  atualizadoEm: r.atualizado_em,
+});
 
 interface LavouraRow {
   id: number;
   user_id: string;
+  lugar_id: number;
   planta: string;
   cultura: string;
   fase: string;
@@ -271,6 +381,7 @@ interface LavouraRow {
 const toLavoura = (r: LavouraRow): Lavoura => ({
   id: r.id,
   userId: r.user_id,
+  lugarId: r.lugar_id,
   planta: r.planta,
   cultura: r.cultura,
   fase: r.fase,

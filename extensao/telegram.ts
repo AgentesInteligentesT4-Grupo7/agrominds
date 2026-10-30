@@ -45,7 +45,9 @@ export function registrarTelegram(c: Contexto): void {
 
   const escolhidas = (userId: string) => {
     const nomes = banco.lavouras(userId).map((l) => planta(l.planta)?.nome ?? l.planta);
-    return nomes.length ? `Escolhidas: ${nomes.join(', ')}.` : 'Nenhuma escolhida ainda.';
+    const lugar = banco.lugar(userId);
+    const onde = lugar && banco.lugaresDe(userId).length > 1 ? ` em ${lugar.nome}` : '';
+    return nomes.length ? `Escolhidas${onde}: ${nomes.join(', ')}.` : `Nenhuma escolhida ainda${onde}.`;
   };
 
   const menuGrupos = (userId: string, intro = '🌱 O que você planta (ou quer plantar)? Pode escolher quantas quiser.'): TelegramResposta => ({
@@ -121,22 +123,80 @@ export function registrarTelegram(c: Contexto): void {
       texto:
         `🌱 Oi, ${ctx.nome.split(' ')[0]}! Eu aviso sobre o tempo onde você planta — roça, sítio, horta ou vaso em casa — e mostro ` +
         'a época de plantar cada planta na sua cidade: boletim do dia, geada, chuva forte, vento, hora boa para pulverizar e quando irrigar.\n\n' +
-        (lugar ? `Seu lugar: ${lugar.nome}. Para trocar, mande a localização de novo.` : 'Toque no botão abaixo para mandar a sua localização.') +
+        (lugar
+          ? `Seu lugar: ${lugar.nome}. Para trocar ou acrescentar outro, /lugares.`
+          : 'Mande a localização de onde fica a plantação. Não precisa estar lá: no 📎 → Localização, arraste o mapa até o lugar ' +
+            'ou busque o endereço. Se estiver no lugar, use o botão abaixo.') +
         '\n\n🔒 Guardo só o lugar aproximado (~1 km), o que você planta e as mensagens que eu mandar. /esquecer apaga tudo.',
-      pedirLocalizacao: '📍 Enviar minha localização',
+      pedirLocalizacao: '📍 Estou no lugar: enviar localização',
     });
   });
 
+  /** Localização recebida de quem já tem lugar: ainda não se sabe se é um lugar novo ou a nova posição do atual. */
+  const recebidas = new Map<string, { cidade: string; uf: string | null; lat: number; lon: number }>();
+
+  const novoLugar = async (ctx: Responde, ponto: { cidade: string; uf: string | null; lat: number; lon: number }, id?: number) => {
+    const lugar = banco.salvarLugar(ctx.userId, ponto.cidade, ponto.lat, ponto.lon, ponto.uf, id !== undefined ? { id } : {});
+    banco.salvarPreferencias(ctx.userId, {});
+    if (banco.lavouras(ctx.userId, lugar.id).length) return ctx.responder(`📍 Lugar atualizado: ${lugar.nome}. Use /clima para ver o tempo.`);
+    const outros = banco.lugaresDe(ctx.userId).length > 1;
+    await ctx.responder(
+      menuGrupos(
+        ctx.userId,
+        `📍 ${outros ? 'Novo lugar' : 'Recebi'}: ${lugar.nome}.${outros ? '' : ' Para dar um nome a ele (ex.: Sítio Boa Vista), /renomear Sítio Boa Vista.'}\n\n` +
+          '🌱 O que você planta (ou quer plantar) aí? Pode escolher quantas quiser.',
+      ),
+    );
+  };
+
   k7.telegram.aoLocalizacao(async (ctx) => {
     const { nome, uf } = await c.nomeDoLugar(ctx.lat, ctx.lon);
-    banco.salvarLugar(ctx.userId, nome, ctx.lat, ctx.lon, uf);
-    banco.salvarPreferencias(ctx.userId, {});
-    if (banco.lavouras(ctx.userId).length) return ctx.responder(`📍 Lugar atualizado: ${nome}. Use /clima para ver o tempo.`);
-    await ctx.responder(menuGrupos(ctx.userId, `📍 Recebi: ${nome}.\n\n🌱 O que você planta (ou quer plantar)? Pode escolher quantas quiser.`));
+    const ponto = { cidade: nome, uf, lat: ctx.lat, lon: ctx.lon };
+    const atual = banco.lugar(ctx.userId);
+    if (!atual) return novoLugar(ctx, ponto);
+    recebidas.set(ctx.userId, ponto);
+    await ctx.responder({
+      texto: `📍 Recebi: ${nome}. É um lugar novo ou a nova posição de "${atual.nome}"?`,
+      botoes: [[{ texto: '➕ Lugar novo', dados: 'agro:loc:novo' }, { texto: `🔁 Mover "${(atual.apelido ?? atual.cidade).slice(0, 24)}"`, dados: `agro:loc:mover:${atual.id}` }]],
+    });
   });
+
+  const menuLugares = (userId: string): TelegramResposta => {
+    const lugares = banco.lugaresDe(userId);
+    return {
+      texto:
+        `📍 Seus lugares (${lugares.length}):\n` +
+        lugares.map((l) => `${l.atual ? '●' : '○'} ${l.nome} · ${banco.lavouras(userId, l.id).length} planta(s)`).join('\n') +
+        '\n\n● = em uso (/clima, /plantas e as perguntas falam dele). Os boletins e alertas vêm de todos.\n' +
+        'Para acrescentar: mande outra localização (📎 → Localização, arraste o mapa). Para dar nome ao lugar em uso: /renomear Sítio Boa Vista.',
+      botoes: [
+        ...lugares.filter((l) => !l.atual).map((l) => [{ texto: `Usar ${l.nome}`.slice(0, 60), dados: `agro:lugar:usar:${l.id}` }]),
+        ...(lugares.length > 1 ? [[{ texto: '🗑️ Remover um lugar', dados: 'agro:lugar:remover' }]] : []),
+      ],
+    };
+  };
 
   k7.telegram.botoes('agro', async (ctx) => {
     const [, campo, valor, extra] = ctx.dados.split(':');
+    if (campo === 'loc' && valor) {
+      const ponto = recebidas.get(ctx.userId);
+      if (!ponto) return ctx.editar('Essa localização expirou; mande de novo.');
+      recebidas.delete(ctx.userId);
+      await ctx.editar(valor === 'novo' ? '➕ Lugar novo' : '🔁 Lugar movido');
+      return novoLugar(ctx, ponto, valor === 'mover' && extra ? Number(extra) : undefined);
+    }
+    if (campo === 'lugar' && valor === 'usar' && extra) {
+      if (!banco.usarLugar(ctx.userId, Number(extra))) return;
+      return ctx.editar(menuLugares(ctx.userId));
+    }
+    if (campo === 'lugar' && valor === 'remover' && !extra) {
+      return ctx.editar({ texto: 'Qual lugar remover? (As plantas dele saem junto.)', botoes: [...banco.lugaresDe(ctx.userId).map((l) => [{ texto: `🗑️ ${l.nome}`.slice(0, 60), dados: `agro:lugar:remover:${l.id}` }]), [{ texto: 'Cancelar', dados: 'agro:lugar:lista' }]] });
+    }
+    if (campo === 'lugar' && valor === 'remover' && extra) {
+      banco.removerLugar(ctx.userId, Number(extra));
+      return ctx.editar(menuLugares(ctx.userId));
+    }
+    if (campo === 'lugar' && valor === 'lista') return ctx.editar(menuLugares(ctx.userId));
     if (campo === 'grupos') return ctx.editar(menuGrupos(ctx.userId));
     if (campo === 'mudar') return ctx.responder(menuGrupos(ctx.userId));
     if (campo === 'grupo' && (valor === 'lavoura' || valor === 'horta')) return ctx.editar(menuGrupo(ctx.userId, valor));
@@ -221,21 +281,21 @@ export function registrarTelegram(c: Contexto): void {
   };
 
   k7.telegram.comando('clima', 'O tempo agora, os próximos dias e o que fazer', async (ctx) => {
-    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
+    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a localização de onde fica a plantação (📎 → Localização: arraste o mapa até o lugar; não precisa estar lá).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
     const s = await tempoAgora(c, ctx.userId, 'clima');
     await ctx.responder(s.mensagem);
     banco.registrarEnvio({ userId: ctx.userId, tipo: 'resposta', regras: s.resultados.map((r) => r.regra), severidade: null, texto: s.texto, entregue: true, erro: null });
   });
 
   k7.telegram.comando('previsao', 'Previsão para o período que você escolher (até 14 dias)', async (ctx) => {
-    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
+    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a localização de onde fica a plantação (📎 → Localização: arraste o mapa até o lugar; não precisa estar lá).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
     const pedido = ctx.args.trim().toLowerCase().replace('amanhã', 'amanha').replace(/fim de semana|fds/, 'fds').replace(/\s*dias?$/, '');
     if (ehPeriodo(pedido)) return ctx.responder((await previsaoDoPeriodo(c, ctx.userId, pedido)).mensagem);
     await ctx.responder({ texto: '🌦️ Previsão para quando?', botoes: grade(PERIODOS.map(([id, nome]) => ({ texto: nome, dados: `agro:prev:${id}` })), 3) });
   });
 
   k7.telegram.comando('plantas', 'O que você planta: fases, colheita e época de plantio', async (ctx) => {
-    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
+    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a localização de onde fica a plantação (📎 → Localização: arraste o mapa até o lugar; não precisa estar lá).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
     if (!banco.lavouras(ctx.userId).length) return ctx.responder(menuGrupos(ctx.userId, '🌱 Você ainda não me disse o que planta. O que é? Pode escolher quantas quiser.'));
     await ctx.responder(
       comBotoes(await minhasPlantas(c, ctx.userId), [
@@ -246,13 +306,26 @@ export function registrarTelegram(c: Contexto): void {
   });
 
   k7.telegram.comando('calendario', 'Época de plantio na sua cidade (ex.: /calendario feijão, couve)', async (ctx) => {
-    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
+    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a localização de onde fica a plantação (📎 → Localização: arraste o mapa até o lugar; não precisa estar lá).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
     await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, { incluir: nomesPedidos(ctx.args) }), BOTOES_CALENDARIO));
   });
 
   k7.telegram.comando('plantar', 'O que dá para plantar agora (ex.: /plantar feijão, couve)', async (ctx) => {
-    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a sua localização.', pedirLocalizacao: '📍 Enviar minha localização' });
+    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Primeiro me mande a localização de onde fica a plantação (📎 → Localização: arraste o mapa até o lugar; não precisa estar lá).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
     await ctx.responder(comBotoes(await calendarioDe(c, ctx.userId, { todas: true, sugerir: true, incluir: nomesPedidos(ctx.args) }), BOTOES_SUGESTAO));
+  });
+
+  k7.telegram.comando('lugares', 'Seus lugares (fazenda, sítio, horta): usar, acrescentar, remover', (ctx) => {
+    if (!banco.lugar(ctx.userId)) return ctx.responder({ texto: 'Você ainda não tem lugar. Mande a localização de onde fica a plantação (📎 → Localização, arraste o mapa).', pedirLocalizacao: '📍 Estou no lugar: enviar localização' });
+    return ctx.responder(menuLugares(ctx.userId));
+  });
+
+  k7.telegram.comando('renomear', 'Dar nome ao lugar em uso (ex.: /renomear Sítio Boa Vista)', async (ctx) => {
+    const lugar = banco.lugar(ctx.userId);
+    if (!lugar) return ctx.responder('Você ainda não tem lugar: mande a localização primeiro.');
+    if (!ctx.args.trim()) return ctx.responder(`Mande o nome junto, por exemplo: /renomear Sítio Boa Vista\n(Lugar em uso: ${lugar.nome}.)`);
+    banco.renomearLugar(ctx.userId, lugar.id, ctx.args);
+    await ctx.responder(`✏️ Pronto: ${banco.lugar(ctx.userId)!.nome}.`);
   });
 
   k7.telegram.comando('alertas', 'Como e quando receber o boletim e os alertas', (ctx) => ctx.responder(menuAlertas(ctx.userId)));

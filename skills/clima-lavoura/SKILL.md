@@ -19,7 +19,9 @@ exige_ferramenta: true
 5. Irrigar ou falta de água: use `balanco_agua`.
 6. Se a pessoa contar o que planta, quando plantou, a fase ou se irriga ("plantei soja dia 10", "tenho alface e couve
    na horta", "não planto mais tomate"), registre com `definir_planta` (uma chamada por planta) e confirme em uma frase.
-7. Se a ferramenta disser que falta a localização, peça para a pessoa tocar em /start e mandar a localização.
+7. A pessoa pode ter vários lugares (fazenda, sítio, horta de casa). Se ela citar um ("no sítio", "lá em Rio Verde"),
+   passe `lugar` nas ferramentas; sem isso, vale o lugar em uso. `meus_lugares` lista os lugares.
+8. Se a ferramenta disser que falta a localização, peça para a pessoa tocar em /start e mandar a localização.
 
 ## 2. Responder
 - As ferramentas já mandam a imagem com os dados junto da resposta: responda em 2 ou 3 frases, sem repetir tabelas.

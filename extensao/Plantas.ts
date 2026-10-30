@@ -173,9 +173,9 @@ export function resumoPlantas(lavouras: Lavoura[], plantas: Planta[], culturas: 
 
 // ------------------------------------------------------------------ calendário do município (ZARC)
 
-/** Município do lugar ("Goiânia/GO") na tábua do ZARC; sem nome de cidade (só coordenada) ou fora dela, nada. */
+/** Município do lugar (cidade "Goiânia/GO") na tábua do ZARC; sem nome de cidade (só coordenada) ou fora dela, nada. */
 export function municipioDoLugar(zarc: Zarc, lugar: Lugar): { geocodigo: string; nome: string; uf: string } | undefined {
-  const [cidade, uf] = lugar.nome.split('/');
+  const [cidade, uf] = lugar.cidade.split('/');
   if (!cidade || /^-?\d/.test(cidade)) return undefined;
   return zarc.municipio(cidade.trim(), (uf ?? lugar.uf)?.trim() || null);
 }

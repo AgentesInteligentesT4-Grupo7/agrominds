@@ -23,26 +23,42 @@ export interface Contexto {
   notificador: Notificador;
   /** Nome legível do lugar (cidade/UF) a partir da coordenada; sem rede, devolve a coordenada. */
   nomeDoLugar: (lat: number, lon: number) => Promise<{ nome: string; uf: string | null }>;
+  /** Cidade, endereço ou coordenada digitada ("Rio Verde, GO", "-17.79, -50.92") → o ponto; undefined se não achar. */
+  buscarLugar: (texto: string) => Promise<{ cidade: string; uf: string | null; lat: number; lon: number } | undefined>;
 }
 
 export type Base = Omit<Contexto, 'notificador'>;
 
-const SEM_LUGAR = 'Primeiro me mande a sua localização: toque em /start e no botão "📍 Enviar minha localização".';
+const SEM_LUGAR =
+  'Primeiro preciso saber onde fica a sua plantação (não precisa ser onde você está). No Telegram: /start e o botão ' +
+  '"📍 Enviar localização" (no 📎 → Localização dá para arrastar o mapa). No chat web: o botão 📍 ao lado da caixa de mensagem.';
 
 /** Data local de hoje (AAAA-MM-DD) no fuso de Brasília (para o calendário, que não depende da previsão). */
 export function hojeLocal(agora = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(agora);
 }
 
-export function lugarOuErro(c: Base, userId: string | undefined): Lugar {
-  const lugar = userId ? c.banco.lugar(userId) : undefined;
+/** O lugar pedido (`lugarId`) ou o atual da pessoa; sem nenhum, erro com o jeito de cadastrar. */
+export function lugarOuErro(c: Base, userId: string | undefined, lugarId?: number): Lugar {
+  const lugar = !userId ? undefined : lugarId !== undefined ? c.banco.lugarPorId(userId, lugarId) : c.banco.lugar(userId);
   if (!lugar) throw new UserFacingError(SEM_LUGAR);
   return lugar;
 }
 
-/** As plantas da pessoa com a fase de hoje. */
-export function plantasDe(c: Base, userId: string, hoje = hojeLocal()): Lavoura[] {
-  return lavourasAtuais(c.banco.lavouras(userId), c.plantas(), c.culturas(), hoje);
+/** Lugar da pessoa pelo nome que ela usa ("sítio", "fazenda boa vista", "Rio Verde"); vários iguais: nenhum. */
+export function acharLugar(c: Base, userId: string, termo: string): Lugar | undefined {
+  const k = chaveDeNome(termo);
+  if (!k) return undefined;
+  const lugares = c.banco.lugaresDe(userId);
+  const exatos = lugares.filter((l) => chaveDeNome(l.apelido ?? '') === k || chaveDeNome(l.cidade.split('/')[0]!) === k);
+  if (exatos.length === 1) return exatos[0];
+  const parecidos = lugares.filter((l) => chaveDeNome(l.nome).includes(k));
+  return parecidos.length === 1 ? parecidos[0] : undefined;
+}
+
+/** As plantas de um lugar da pessoa (padrão: o atual) com a fase de hoje. */
+export function plantasDe(c: Base, userId: string, hoje = hojeLocal(), lugarId?: number): Lavoura[] {
+  return lavourasAtuais(c.banco.lavouras(userId, lugarId), c.plantas(), c.culturas(), hoje);
 }
 
 export function nomeDe(c: Base): (l: Lavoura) => string {
@@ -62,10 +78,10 @@ export interface Saida {
 }
 
 /** /clima e o boletim: o layout do tempo com os avisos e as recomendações. */
-export async function tempoAgora(c: Base, userId: string, tipo: 'clima' | 'boletim', agora = new Date()): Promise<Saida> {
-  const lugar = lugarOuErro(c, userId);
+export async function tempoAgora(c: Base, userId: string, tipo: 'clima' | 'boletim', agora = new Date(), lugarId?: number): Promise<Saida> {
+  const lugar = lugarOuErro(c, userId, lugarId);
   const p = await c.meteo.previsao(lugar.celula);
-  const lavouras = plantasDe(c, userId, hojeLocal(agora));
+  const lavouras = plantasDe(c, userId, hojeLocal(agora), lugar.id);
   const resultados = avaliar(c, p, lavouras, agora);
   const resumo = resumoPlantas(lavouras, c.plantas(), c.culturas());
   const titulo = tipo === 'boletim' ? tituloBoletim(p, agora) : '🌱 Tempo agora';
@@ -76,8 +92,8 @@ export async function tempoAgora(c: Base, userId: string, tipo: 'clima' | 'bolet
 }
 
 /** /previsao: o período escolhido (hoje, amanhã, fim de semana, 3, 7 ou 14 dias). */
-export async function previsaoDoPeriodo(c: Base, userId: string, opcao: OpcaoPeriodo, agora = new Date()): Promise<Omit<Saida, 'resultados'>> {
-  const lugar = lugarOuErro(c, userId);
+export async function previsaoDoPeriodo(c: Base, userId: string, opcao: OpcaoPeriodo, agora = new Date(), lugarId?: number): Promise<Omit<Saida, 'resultados'>> {
+  const lugar = lugarOuErro(c, userId, lugarId);
   const p = await c.meteo.previsao(lugar.celula);
   const dados = dadosPrevisao(p, lugar, periodoDe(opcao, hojeLocal(agora)), agora);
   const texto = textoPrevisao(dados);
@@ -85,10 +101,10 @@ export async function previsaoDoPeriodo(c: Base, userId: string, opcao: OpcaoPer
 }
 
 /** Calendário do município: das plantas da pessoa, ou (sem plantas, ou `todas`) do catálogo inteiro ou de um grupo. */
-export function linhasDoCalendario(c: Base, userId: string, opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[] } = {}): { lugar: Lugar; linhas: LinhaCalendario[]; geocodigo: string | undefined } {
-  const lugar = lugarOuErro(c, userId);
+export function linhasDoCalendario(c: Base, userId: string, opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[]; lugarId?: number } = {}): { lugar: Lugar; linhas: LinhaCalendario[]; geocodigo: string | undefined } {
+  const lugar = lugarOuErro(c, userId, opcoes.lugarId);
   const municipio = municipioDoLugar(c.zarc, lugar);
-  const minhas = c.banco.lavouras(userId);
+  const minhas = c.banco.lavouras(userId, lugar.id);
   const catalogo = c.plantas();
   const escolhidas = opcoes.plantas
     ? catalogo.filter((p) => opcoes.plantas!.includes(p.id))
@@ -137,7 +153,7 @@ function avisoSemZarc(c: Base, geocodigo: string | undefined): string | undefine
 export async function calendarioDe(
   c: Base,
   userId: string,
-  opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[]; sugerir?: boolean; incluir?: string[] } = {},
+  opcoes: { todas?: boolean; grupo?: Planta['grupo']; plantas?: string[]; sugerir?: boolean; incluir?: string[]; lugarId?: number } = {},
   agora = new Date(),
 ): Promise<Omit<Saida, 'resultados'>> {
   const hoje = hojeLocal(agora);
@@ -164,7 +180,7 @@ export async function calendarioDe(
   const marcar = opcoes.sugerir === true || mostrar.length > 0;
   mostrar = [
     ...mostrar,
-    ...calendario(c.zarc, geocodigo, pedidas, c.banco.lavouras(userId)).map((l) => ({ ...l, ...(marcar ? { pedida: true } : {}) })),
+    ...calendario(c.zarc, geocodigo, pedidas, c.banco.lavouras(userId, lugar.id)).map((l) => ({ ...l, ...(marcar ? { pedida: true } : {}) })),
     ...desconhecidas.map((nome) => ({ planta: chaveDeNome(nome), nome: nome[0]!.toUpperCase() + nome.slice(1), risco: new Array<number>(36).fill(0), semDado: 'fora_do_catalogo' as const, ...(marcar ? { pedida: true } : {}) })),
   ];
   const dados = dadosCalendario(lugar, mostrar, hoje, { titulo, ...(safra ? { safra } : {}), destaque: opcoes.sugerir === true, ...(aviso ? { vazio: aviso } : {}) });
@@ -174,11 +190,11 @@ export async function calendarioDe(
 }
 
 /** /plantas: o layout "Minhas plantas". */
-export async function minhasPlantas(c: Base, userId: string, agora = new Date()): Promise<Omit<Saida, 'resultados'>> {
+export async function minhasPlantas(c: Base, userId: string, agora = new Date(), lugarId?: number): Promise<Omit<Saida, 'resultados'>> {
   const hoje = hojeLocal(agora);
-  const lugar = lugarOuErro(c, userId);
-  const lavouras = c.banco.lavouras(userId);
-  const { linhas } = linhasDoCalendario(c, userId);
+  const lugar = lugarOuErro(c, userId, lugarId);
+  const lavouras = c.banco.lavouras(userId, lugar.id);
+  const { linhas } = linhasDoCalendario(c, userId, { lugarId: lugar.id });
   const dados = dadosPlantas(lugar, lavouras, c.plantas(), c.culturas(), linhas, hoje, !c.zarc.vazio());
   const texto = [`🌱 Minhas plantas · ${lugar.nome}`, '', ...dados.plantas.map((p) => `• ${p.nome}${p.fase ? ` — ${p.fase.toLowerCase()}` : ''}${p.irrigada ? ', irrigada' : ''}${p.colheita ? `, colheita estimada ${p.colheita}` : ''}\n  ${p.janela}`)].join('\n');
   return { texto, mensagem: await c.layouts.mensagem('plantas', dados, `🌱 Minhas plantas · ${lugar.nome}`, texto) };

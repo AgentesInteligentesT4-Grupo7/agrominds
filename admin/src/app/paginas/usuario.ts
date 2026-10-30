@@ -34,21 +34,34 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
 
         <div class="grade duas">
           <div class="cartao">
-            <h2>Plantas ({{ u.plantas.length }})</h2>
-            @for (l of u.plantas; track l.planta) {
-              <div class="planta">
-                <span>
-                  <b>{{ l.nome }}</b> · {{ nomeFase(l.cultura, l.fase) }}
-                  @if (l.plantio) { · plantio {{ l.plantio | date: 'dd/MM/yyyy' }} }
-                  @if (l.irrigada) { · 💧 irrigada }
-                </span>
-                @if (api.podeEditar()) { <button type="button" class="link" (click)="removerPlanta(l.planta, l.nome)">remover</button> }
-              </div>
+            <h2>Lugares e plantas</h2>
+            @for (lugar of u.lugares; track lugar.id) {
+              <h3 class="lugar">📍 {{ lugar.nome }} @if (lugar.atual) { <span class="pill">em uso</span> }</h3>
+              @for (l of lugar.plantas; track l.planta) {
+                <div class="planta">
+                  <span>
+                    <b>{{ l.nome }}</b> · {{ nomeFase(l.cultura, l.fase) }}
+                    @if (l.plantio) { · plantio {{ l.plantio | date: 'dd/MM/yyyy' }} }
+                    @if (l.irrigada) { · 💧 irrigada }
+                  </span>
+                  @if (api.podeEditar()) { <button type="button" class="link" (click)="removerPlanta(lugar.id, l.planta, l.nome)">remover</button> }
+                </div>
+              } @empty {
+                <p class="muted">Nenhuma planta neste lugar.</p>
+              }
             } @empty {
-              <p class="muted">Nenhuma planta ainda (a pessoa escolhe no Telegram, em /plantas).</p>
+              <p class="muted">Nenhum lugar ainda (a pessoa manda a localização no Telegram, ou usa o 📍 no chat web).</p>
             }
-            @if (api.podeEditar()) {
+            @if (api.podeEditar() && u.lugares.length) {
               <div class="linha nova">
+                @if (u.lugares.length > 1) {
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Lugar</mat-label>
+                    <mat-select [(ngModel)]="novoLugar">
+                      @for (lugar of u.lugares; track lugar.id) { <mat-option [value]="lugar.id">{{ lugar.nome }}</mat-option> }
+                    </mat-select>
+                  </mat-form-field>
+                }
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>Planta</mat-label>
                   <mat-select [(ngModel)]="novaPlanta">
@@ -182,6 +195,7 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
     .cartao { margin-bottom: 16px; }
     .linha { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
     .horas { gap: 2px; }
+    .lugar { font-size: 14px; font-weight: 500; margin: 14px 0 4px; }
     .planta { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--agro-line); }
     .nova { margin-top: 12px; }
     .print { display: block; max-width: 100%; width: 480px; margin: 8px auto 0; border-radius: 12px; border: 1px solid var(--agro-line); }
@@ -217,6 +231,7 @@ export class UsuarioDetalhe {
   readonly mensagem = signal('');
   readonly horarios = signal<number[]>([]);
   novaPlanta = '';
+  novoLugar: number | null = null;
   novoPlantio = '';
   novaIrrigada = false;
   modo: Modo = 'boletim';
@@ -243,6 +258,7 @@ export class UsuarioDetalhe {
       this.horarios.set([...u.preferencias.horarios]);
       this.envios.set(await this.api.envios({ usuario: id }));
       this.versao.update((v) => v + 1);
+      this.novoLugar = u.lugares.find((l) => l.atual)?.id ?? null;
       this.balanco.set(u.lugar && u.plantas.length ? await this.api.balanco(id).catch(() => null) : null);
     } catch (e) {
       this.mensagem.set(mensagemDeErro(e));
@@ -262,15 +278,15 @@ export class UsuarioDetalhe {
   }
 
   async adicionarPlanta(): Promise<void> {
-    const dados = { planta: this.novaPlanta, irrigada: this.novaIrrigada, ...(this.novoPlantio ? { plantio: this.novoPlantio } : {}) };
+    const dados = { planta: this.novaPlanta, irrigada: this.novaIrrigada, ...(this.novoLugar !== null ? { lugar: this.novoLugar } : {}), ...(this.novoPlantio ? { plantio: this.novoPlantio } : {}) };
     await this.agir(() => this.api.salvarPlanta(this.id(), dados), `${this.nomePlanta(this.novaPlanta)} adicionada.`);
     this.novaPlanta = '';
     this.novoPlantio = '';
     this.novaIrrigada = false;
   }
 
-  async removerPlanta(planta: string, nome: string): Promise<void> {
-    await this.agir(() => this.api.salvarPlanta(this.id(), { planta, remover: true }), `${nome} removida.`);
+  async removerPlanta(lugar: number, planta: string, nome: string): Promise<void> {
+    await this.agir(() => this.api.salvarPlanta(this.id(), { planta, lugar, remover: true }), `${nome} removida.`);
   }
 
   async salvarPreferencias(): Promise<void> {

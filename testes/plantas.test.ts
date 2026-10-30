@@ -9,7 +9,7 @@ import { K7Falso, culturasDaFita, emLinhas, plantasDaFita, playwright, previsaoS
 
 const plantas = plantasDaFita();
 const culturas = culturasDaFita();
-const lavoura = (planta: string, dados: Partial<Lavoura> = {}): Lavoura => ({ id: 1, userId: '1', planta, cultura: plantas.find((p) => p.id === planta)!.cultura, fase: 'vegetativo', irrigada: false, irrigouEm: null, plantio: null, pendente: false, atualizadoEm: '', ...dados });
+const lavoura = (planta: string, dados: Partial<Lavoura> = {}): Lavoura => ({ id: 1, userId: '1', lugarId: 1, planta, cultura: plantas.find((p) => p.id === planta)!.cultura, fase: 'vegetativo', irrigada: false, irrigouEm: null, plantio: null, pendente: false, atualizadoEm: '', ...dados });
 
 async function zarcDeExemplo(): Promise<Zarc> {
   const z = new Zarc(sqlEmMemoria());
@@ -116,7 +116,7 @@ describe('ZARC (zoneamento agrícola)', () => {
 
 describe('Layouts (imagens)', () => {
   const p = previsaoSintetica('2026-10-30T09:00', (hora, h) => (hora.startsWith('2026-10-31') && h === 5 ? { temperature_2m: 0.5 } : {}));
-  const lugar = { userId: '1', nome: 'Goiânia/GO', lat: -16.69, lon: -49.26, celula: '-16.7,-49.3', uf: 'GO', atualizadoEm: '' };
+  const lugar = { id: 1, userId: '1', nome: 'Goiânia/GO', apelido: null, cidade: 'Goiânia/GO', atual: true, lat: -16.69, lon: -49.26, celula: '-16.7,-49.3', uf: 'GO', atualizadoEm: '' };
   const agora = quando('2026-10-30T09:00');
   const aviso = { regra: 'geada', titulo: 'Risco de geada', severidade: 'grave' as const, texto: '🥶 Geada </script><b>', dia: '2026-10-31', alerta: true };
 

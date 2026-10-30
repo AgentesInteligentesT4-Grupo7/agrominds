@@ -7,8 +7,9 @@ Proposta completa: [specs/alertas-clima.md](specs/alertas-clima.md).
 ## O que faz
 
 - **No Telegram** (bot da fita, só para convidados):
-  - `/start` pede a localização (uma vez); depois a pessoa escolhe **quantas plantas quiser**, da lavoura ou da horta
-    (soja, milho, feijão, café, pastagem... alface, cebola, mandioca, banana, limão...), diz quando plantou e se irriga;
+  - `/start` pede a localização de **onde fica a plantação** (não precisa estar lá: no 📎 → Localização dá para arrastar o
+    mapa); a pessoa pode ter **vários lugares** (fazenda, sítio, horta de casa: `/lugares`, `/renomear`), e em cada um
+    escolhe **quantas plantas quiser**, da lavoura ou da horta, diz quando plantou e se irriga;
   - **tudo o que tem dados vai como imagem** (o "print" de um layout em HTML), com uma legenda curta:
     - `/clima` e o **boletim** dos horários escolhidos: agora, próximos dias, gráfico de 24 h, avisos e recomendações;
     - `/previsao`: o período que a pessoa escolher (hoje, amanhã, fim de semana, 3, 7 ou 14 dias);
@@ -19,6 +20,8 @@ Proposta completa: [specs/alertas-clima.md](specs/alertas-clima.md).
   - recomendações: janela de pulverização, irrigar ou esperar a chuva (balanço de água), colheita, plantio;
   - conversa livre ("vai chover no fim de semana?", "o que planto agora na horta?", "plantei milho dia 10"): o agente
     usa as ferramentas da fita, e os números (e a imagem) vêm delas.
+- **No chat web** do K7: o botão 📍 ao lado da caixa de mensagem cadastra e troca os lugares (onde estou agora, ou
+  cidade, endereço ou coordenada colada do Google Maps); o resto é conversa ("como está o tempo no sítio?").
 - **Painel administrativo** (Angular, `http://127.0.0.1:8790`): usuários (convite com QR, aprovar, bloquear), as
   plantas de cada pessoa, as imagens que ela recebe (para baixar), tudo o que foi enviado, gráficos do tempo e mapa.
 

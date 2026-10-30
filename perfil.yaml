@@ -43,7 +43,7 @@ canais: [telegram, terminal, web]
 # Quem pode usar o bot: só convidados (QR code) e pedidos aprovados pelos donos. Convites: /convite no bot,
 # na página de administração do K7 ou no painel da AgroMinds.
 telegram:
-  acesso: convite
+  acesso: aberto
 
 # Código da fita: tempo (Open-Meteo), época de plantio (ZARC), conversa no Telegram, imagens (layouts/), ferramentas do
 # agente e o painel (Angular).
@@ -54,3 +54,4 @@ privacidade: publico
 
 # Variáveis que o .env do perfil precisa ter (o instalador avisa as que faltam)
 variaveis: {}
+vitrine: false

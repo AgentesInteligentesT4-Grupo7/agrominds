@@ -510,6 +510,10 @@ Pedidos do grupo depois da 0.2, já implementados:
   ferramentas do agente.
 - **Previsão por período.** `/previsao` com botões (hoje, amanhã, fim de semana, 3, 7 ou 14 dias); o Open-Meteo dá
   16 dias (além de 7, tendência). Até 3 dias, gráfico hora a hora; mais, dia a dia.
+- **Vários lugares por pessoa.** A localização não precisa ser onde a pessoa está (no Telegram, arrastar o mapa; no chat
+  web, buscar cidade, endereço ou coordenada). Cada lugar (fazenda, sítio, horta de casa) tem nome, coordenada e as
+  plantas dele; um fica "em uso" para os comandos e as perguntas, e os boletins e alertas saem de todos, com o nome do
+  lugar. `/lugares` e `/renomear` no Telegram; botão 📍 no chat web (que não recebe notificações automáticas).
 - **Sugestão do mês.** No primeiro boletim de cada mês, vai junto “O que plantar agora” no município (`/plantar`).
 
 Comandos novos: `/previsao`, `/plantas` (substitui `/lavoura`), `/calendario`, `/plantar`. Ferramentas do agente:

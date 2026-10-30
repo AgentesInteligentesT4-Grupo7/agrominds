@@ -152,8 +152,10 @@ export class Usuarios {
   }
 
   lavoura(u: Usuario): string {
-    if (!u.plantas.length) return '—';
-    return u.plantas.map((l) => `${l.nome}${l.irrigada ? ' 💧' : ''}`).join(', ');
+    const plantas = u.lugares.reduce((n, l) => n + l.plantas.length, 0);
+    if (!plantas) return '—';
+    const nomes = [...new Set(u.lugares.flatMap((l) => l.plantas.map((p) => p.nome)))].join(', ');
+    return u.lugares.length > 1 ? `${nomes} (${u.lugares.length} lugares)` : nomes;
   }
 
   async status(u: Usuario, status: 'ativo' | 'bloqueado'): Promise<void> {

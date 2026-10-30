@@ -10,7 +10,7 @@ const dir = path.resolve('regras');
 const regras = lerRegras(lerYaml(fs.readFileSync(path.join(dir, 'clima.yaml'), 'utf8')));
 const culturas = lerCulturas(lerYaml(fs.readFileSync(path.join(dir, 'culturas.yaml'), 'utf8')));
 const AGORA = '2026-10-30T09:00';
-const planta = (p: string, cultura: string, fase: string, irrigada = false): Lavoura => ({ id: 1, userId: '1', planta: p, cultura, fase, irrigada, irrigouEm: null, plantio: null, pendente: false, atualizadoEm: '' });
+const planta = (p: string, cultura: string, fase: string, irrigada = false): Lavoura => ({ id: 1, userId: '1', lugarId: 1, planta: p, cultura, fase, irrigada, irrigouEm: null, plantio: null, pendente: false, atualizadoEm: '' });
 const soja = (fase: string, irrigada = false) => planta('soja', 'soja', fase, irrigada);
 const ids = (r: Array<{ regra: string }>) => r.map((x) => x.regra);
 

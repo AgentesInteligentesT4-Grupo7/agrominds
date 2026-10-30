@@ -5,6 +5,7 @@ import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { Banco } from './Banco.js';
 import { errorMessage } from './erros.js';
+import { buscarLugar, nomeDoLugar } from './Geo.js';
 import { registrarFerramentas } from './ferramentas.js';
 import type { FitaApi } from './k7.js';
 import { Layouts } from './Layouts.js';
@@ -16,6 +17,7 @@ import { type Planta, culturasDoZarc, lerPlantas } from './Plantas.js';
 import { type Cultura, type Regra, lerCulturas, lerRegras } from './Regras.js';
 import type { Base, Contexto } from './Servicos.js';
 import { registrarTelegram } from './telegram.js';
+import { registrarWeb } from './web.js';
 import { Zarc } from './Zarc.js';
 
 /**
@@ -43,10 +45,16 @@ export default async function ativar(k7: FitaApi): Promise<void> {
   culturas();
   plantas();
 
-  const base: Base = { k7, banco, meteo, zarc, layouts: new Layouts(k7), regras, culturas, plantas, nomeDoLugar: (lat, lon) => nomeDoLugar(lat, lon, env.AGRO_GEOCODIFICAR !== 'off') };
+  const geocodificar = env.AGRO_GEOCODIFICAR !== 'off';
+  const base: Base = {
+    k7, banco, meteo, zarc, layouts: new Layouts(k7), regras, culturas, plantas,
+    nomeDoLugar: (lat, lon) => nomeDoLugar(lat, lon, geocodificar),
+    buscarLugar: (texto) => buscarLugar(texto, geocodificar),
+  };
   const contexto: Contexto = { ...base, notificador: new Notificador(base) };
   registrarTelegram(contexto);
   registrarFerramentas(contexto);
+  registrarWeb(contexto);
 
   k7.tarefa('boletins e alertas', 10 * 60_000, async () => {
     const r = await contexto.notificador.ciclo();
@@ -118,25 +126,4 @@ function relendo<T>(file: string, parse: (texto: string) => T, k7: FitaApi): () 
     }
     return value!;
   };
-}
-
-/**
- * Cidade e UF da coordenada (OpenStreetMap/Nominatim: 1 pedido por localização, com identificação do app, como pede a
- * política de uso). Sem rede ou desligado (AGRO_GEOCODIFICAR=off), devolve a coordenada arredondada.
- */
-async function nomeDoLugar(lat: number, lon: number, geocodificar: boolean): Promise<{ nome: string; uf: string | null }> {
-  const coordenada = { nome: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, uf: null };
-  if (!geocodificar) return coordenada;
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=pt-BR&lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`;
-    const r = await fetch(url, { headers: { 'user-agent': 'K7-AgroMinds/0.2 (projeto academico UFG)' }, signal: AbortSignal.timeout(8_000) });
-    if (!r.ok) return coordenada;
-    const body = (await r.json()) as { address?: Record<string, string> };
-    const a = body.address ?? {};
-    const cidade = a.city ?? a.town ?? a.village ?? a.municipality ?? a.county;
-    const uf = /^BR-([A-Z]{2})$/.exec(a['ISO3166-2-lvl4'] ?? '')?.[1] ?? null;
-    return cidade ? { nome: `${cidade}${uf ? `/${uf}` : a.state ? `/${a.state}` : ''}`, uf } : coordenada;
-  } catch {
-    return coordenada;
-  }
 }

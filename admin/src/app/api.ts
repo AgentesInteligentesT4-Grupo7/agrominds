@@ -25,7 +25,10 @@ export interface Usuario {
   criadoEm: string | null;
   ultimoContato: string | null;
   lugar: { nome: string; lat: number; lon: number; celula: string } | null;
+  /** Plantas do lugar em uso. */
   plantas: PlantaDaPessoa[];
+  /** Todos os lugares da pessoa, cada um com as plantas dele. */
+  lugares: LugarDaPessoa[];
   preferencias: { modo: Modo; horarios: number[]; pausado: boolean };
   ultimoEnvio: { quando: string; tipo: string; entregue: boolean } | null;
 }
@@ -39,6 +42,15 @@ export interface PlantaDaPessoa {
   irrigada: boolean;
   irrigouEm: string | null;
   plantio: string | null;
+}
+
+export interface LugarDaPessoa {
+  id: number;
+  nome: string;
+  apelido: string | null;
+  cidade: string;
+  atual: boolean;
+  plantas: PlantaDaPessoa[];
 }
 
 /** Planta do catálogo (regras/plantas.yaml); `zoneada`: tem época de plantio no ZARC. */
@@ -183,7 +195,7 @@ export class Api {
   balanco = (userId: string, planta?: string) => this.get<Balanco>(`/usuarios/${userId}/balanco`, { planta });
   definirStatus = (userId: string, status: 'ativo' | 'bloqueado') => this.post(`/usuarios/${userId}`, { status });
   enviarTeste = (userId: string) => this.post<{ entregue: boolean; erro?: string }>(`/usuarios/${userId}/teste`);
-  salvarPlanta = (userId: string, dados: { planta: string; fase?: string; irrigada?: boolean; plantio?: string | null; remover?: boolean }) => this.post(`/usuarios/${userId}/plantas`, dados);
+  salvarPlanta = (userId: string, dados: { planta: string; lugar?: number; fase?: string; irrigada?: boolean; plantio?: string | null; remover?: boolean }) => this.post(`/usuarios/${userId}/plantas`, dados);
   /** Endereço do print de um layout (a imagem vem do servidor, com a sessão). */
   imagem = (userId: string, layout: string, versao = 0) => `/api/admin/usuarios/${userId}/imagem?layout=${layout}&v=${versao}`;
   salvarPreferencias = (userId: string, p: { modo?: Modo; horarios?: number[]; pausado?: boolean }) => this.post(`/usuarios/${userId}/preferencias`, p);

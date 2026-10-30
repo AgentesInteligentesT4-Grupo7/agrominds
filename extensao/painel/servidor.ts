@@ -135,11 +135,13 @@ export class PainelServidor {
         }
         if (req.method === 'POST' && acao === '/plantas') {
           escrita();
-          const b = (await lerJson(req)) as { planta?: string; fase?: string; irrigada?: boolean; plantio?: string | null; remover?: boolean };
+          const b = (await lerJson(req)) as { planta?: string; fase?: string; irrigada?: boolean; plantio?: string | null; remover?: boolean; lugar?: number };
           const planta = this.c.plantas().find((x) => x.id === b.planta);
           if (!planta) throw new HttpErro(400, 'Planta inválida');
+          const lugar = b.lugar !== undefined ? this.c.banco.lugarPorId(id, Number(b.lugar)) : this.c.banco.lugar(id);
+          if (!lugar) throw new HttpErro(400, 'Essa pessoa não tem esse lugar');
           if (b.remover === true) {
-            this.c.banco.removerLavoura(id, planta.id);
+            this.c.banco.removerLavoura(id, planta.id, lugar.id);
             return this.json(res, { ok: true });
           }
           const cultura = this.c.culturas().find((x) => x.id === planta.cultura);
@@ -153,7 +155,7 @@ export class PainelServidor {
               ...(typeof b.irrigada === 'boolean' ? { irrigada: b.irrigada } : {}),
               ...(b.plantio !== undefined ? { plantio: b.plantio || null } : {}),
               pendente: false,
-            }),
+            }, lugar.id),
           );
         }
         // O mesmo print que a pessoa recebe no Telegram (para ver e baixar para a apresentação).
@@ -225,7 +227,7 @@ export class PainelServidor {
   private usuarios() {
     const { banco } = this.c;
     const acessos = new Map(this.c.k7.telegram.acessos.listar().map((a) => [String(a.userId), a]));
-    const ids = new Set([...acessos.keys(), ...banco.lugares().map((l) => l.userId)]);
+    const ids = new Set([...acessos.keys(), ...banco.todosLugares().map((l) => l.userId)]);
     return [...ids].map((id) => {
       const a = acessos.get(id);
       const ultimo = banco.envios({ userId: id, limite: 1 })[0];
@@ -239,6 +241,8 @@ export class PainelServidor {
         ultimoContato: a?.ultimoContato ?? null,
         lugar: banco.lugar(id) ?? null,
         plantas: plantasDe(this.c, id).map((l) => ({ ...l, nome: this.c.plantas().find((x) => x.id === l.planta)?.nome ?? l.planta })),
+        // Todos os lugares, cada um com as plantas dele (a fase de hoje).
+        lugares: banco.lugaresDe(id).map((l) => ({ ...l, plantas: plantasDe(this.c, id, undefined, l.id).map((p) => ({ ...p, nome: this.c.plantas().find((x) => x.id === p.planta)?.nome ?? p.planta })) })),
         preferencias: banco.preferencias(id),
         ultimoEnvio: ultimo ? { quando: ultimo.quando, tipo: ultimo.tipo, entregue: ultimo.entregue } : null,
       };
@@ -262,12 +266,12 @@ export class PainelServidor {
     );
     return {
       usuarios: { ativos: conta('ativo'), pendentes: conta('pendente'), bloqueados: conta('bloqueado') },
-      lugares: banco.lugares().length,
+      lugares: banco.todosLugares().length,
       enviosHoje: k7.sql.get<{ n: number }>("SELECT COUNT(*) AS n FROM envios WHERE quando >= date('now')")!.n,
       alertasSemana: Object.entries(porRegra).map(([regra, n]) => ({ regra, n })),
       enviosPorDia: porDia,
       // Ponto aproximado (0,1° ≈ 11 km): o mapa não mostra onde a pessoa está.
-      mapa: banco.lugares().map((l) => ({ userId: l.userId, nome: l.nome, lat: Number(l.lat.toFixed(1)), lon: Number(l.lon.toFixed(1)), severidade: severidade.get(l.userId) ?? null })),
+      mapa: banco.todosLugares().map((l) => ({ userId: l.userId, nome: l.nome, lat: Number(l.lat.toFixed(1)), lon: Number(l.lon.toFixed(1)), severidade: severidade.get(l.userId) ?? null })),
     };
   }
 

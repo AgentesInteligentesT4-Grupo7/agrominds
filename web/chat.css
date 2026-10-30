@@ -1,0 +1,37 @@
+/* AgroMinds no chat web do K7: janela "Seus lugares" (botão 📍). Usa as cores da página quando existem. */
+.agro-sem-lugar { animation: agro-pulsa 1.6s ease-in-out 3; }
+@keyframes agro-pulsa { 50% { transform: scale(1.18); } }
+
+.agro-dialogo {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.agro-caixa {
+  width: min(520px, 100%); max-height: 90vh; overflow: auto; border-radius: 16px; padding: 18px 20px;
+  background: var(--panel, #fff); color: var(--text, #1d1f1a); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  font: inherit;
+}
+.agro-caixa h3 { margin: 0 0 4px; font-size: 18px; }
+.agro-caixa h4 { margin: 16px 0 8px; font-size: 15px; }
+.agro-suave { margin: 4px 0; font-size: 13px; opacity: 0.7; }
+.agro-aviso { margin: 8px 0 0; font-size: 13px; color: #b26a00; min-height: 1em; }
+.agro-lista { display: grid; gap: 6px; margin-top: 10px; }
+.agro-lugar {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+}
+.agro-lugar.atual { border-color: #2e7d32; background: rgba(46, 125, 50, 0.08); }
+.agro-nome small { opacity: 0.65; margin-left: 4px; }
+.agro-acoes { display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.agro-caixa input {
+  width: 100%; box-sizing: border-box; padding: 9px 11px; border-radius: 10px; font: inherit; margin-bottom: 8px;
+  border: 1px solid rgba(127, 127, 127, 0.4); background: transparent; color: inherit;
+}
+.agro-linha { display: flex; gap: 8px; }
+.agro-linha input { flex: 1; }
+.agro-caixa button { font: inherit; cursor: pointer; border-radius: 10px; }
+.agro-primario { border: 0; background: #2e7d32; color: #fff; padding: 9px 14px; margin-bottom: 8px; }
+.agro-secundario { width: 100%; border: 1px solid #2e7d32; background: transparent; color: inherit; padding: 9px 14px; }
+.agro-link { border: 0; background: transparent; color: #2e7d32; padding: 4px 6px; }
+.agro-link.perigo { color: #c62828; }
+.agro-fechar { margin-top: 10px; float: right; border: 1px solid rgba(127, 127, 127, 0.4); background: transparent; color: inherit; padding: 6px 14px; }

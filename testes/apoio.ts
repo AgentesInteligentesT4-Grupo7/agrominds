@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import { Banco } from '../extensao/Banco.js';
-import type { FitaApi, FitaSql, FitaToolCtx, TelegramCtx, TelegramResposta } from '../extensao/k7.js';
+import type { FitaApi, FitaSql, FitaToolCtx, TelegramCtx, TelegramResposta, WebRotaCtx } from '../extensao/k7.js';
 import { Layouts } from '../extensao/Layouts.js';
 import { Notificador } from '../extensao/Notificador.js';
 import type { OpenMeteo, Previsao } from '../extensao/OpenMeteo.js';
@@ -62,6 +62,8 @@ export class K7Falso {
   readonly htmls: string[] = [];
   /** Imagens que as ferramentas anexaram à resposta. */
   readonly anexadas: Buffer[] = [];
+  /** Rotas web que a fita registrou (k7.web.rota). */
+  readonly rotas: Array<{ metodo: string; caminho: RegExp; handler: (ctx: WebRotaCtx) => Promise<void> | void }> = [];
   /** Simula uma máquina sem Chrome/Edge. */
   semNavegador = false;
   /** Quem o bot não consegue alcançar (ex.: bloqueou o bot). */
@@ -75,7 +77,7 @@ export class K7Falso {
       fita: { nome: 'agrominds', dir: this.dir, workspaceDir: '.', dadosDir: '.', env },
       log: { info: () => undefined, aviso: () => undefined, erro: () => undefined },
       ferramenta: (t) => void this.ferramentas.set(t.name, t as never),
-      web: { rota: () => undefined, painel: () => undefined },
+      web: { rota: (metodo, caminho, handler) => void this.rotas.push({ metodo, caminho, handler }), painel: () => undefined },
       comando: () => undefined,
       aoIniciar: () => undefined,
       util: {
@@ -112,6 +114,33 @@ export class K7Falso {
         },
       },
     };
+  }
+
+  /** Chama uma rota web da fita como o chat faria (visitante `userId`); devolve o status e o JSON. */
+  async rota(metodo: string, caminho: string, corpo: unknown, userId = 'web'): Promise<{ status: number; dados: any }> {
+    const r = this.rotas.find((x) => x.metodo === metodo && x.caminho.test(caminho));
+    if (!r) return { status: 404, dados: null };
+    let status = 200;
+    let dados: unknown;
+    class Falha extends Error {}
+    const ctx = {
+      params: r.caminho.exec(caminho)!.slice(1),
+      userId,
+      publico: false,
+      json: (d: unknown, s = 200) => void ((dados = d), (status = s)),
+      lerJson: async () => corpo,
+      falhar: (s: number, mensagem: string) => {
+        status = s;
+        dados = { erro: mensagem };
+        throw new Falha(mensagem);
+      },
+    } as unknown as WebRotaCtx;
+    try {
+      await r.handler(ctx);
+    } catch (error) {
+      if (!(error instanceof Falha)) throw error;
+    }
+    return { status, dados };
   }
 
   /** Contexto de uma ferramenta chamada pelo agente nesta conversa. */
@@ -225,7 +254,9 @@ export async function montarFita(previsao: () => Previsao, opcoes: { zarc?: bool
   const meteo = { previsao: async () => previsao() } as unknown as OpenMeteo;
   const zarc = new Zarc(api.sql);
   if (opcoes.zarc !== false) await zarc.importar(emLinhas(tabuaZarc()), culturasDoZarc(plantasDaFita()), { arquivo: 'safra', nome: 'Tábua de risco - Safra 2026/2027', url: 'teste' });
-  const base: Base = { k7: api, banco, meteo, zarc, layouts: new Layouts(api), regras: regrasDaFita, culturas: culturasDaFita, plantas: plantasDaFita, nomeDoLugar: async () => ({ nome: 'Goiânia/GO', uf: 'GO' }) };
+  const base: Base = { k7: api, banco, meteo, zarc, layouts: new Layouts(api), regras: regrasDaFita, culturas: culturasDaFita, plantas: plantasDaFita, nomeDoLugar: async () => ({ nome: 'Goiânia/GO', uf: 'GO' }),
+    buscarLugar: async (t: string) => (/rio verde/i.test(t) ? { cidade: 'Rio Verde/GO', uf: 'GO', lat: -17.79, lon: -50.92 } : undefined),
+  };
   const contexto: Contexto = { ...base, notificador: new Notificador(base) };
   return { k7, api, banco, zarc, contexto };
 }

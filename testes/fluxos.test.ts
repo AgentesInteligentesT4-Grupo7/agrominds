@@ -26,7 +26,7 @@ describe('Conversa no Telegram', () => {
     const { k7, banco } = await montar(() => previsaoSintetica('2026-10-30T09:00'));
     const ana = k7.pessoa('50');
     await ana.comando('start');
-    assert.equal((ana.respostas[0] as TelegramResposta).pedirLocalizacao, '📍 Enviar minha localização');
+    assert.equal((ana.respostas[0] as TelegramResposta).pedirLocalizacao, '📍 Estou no lugar: enviar localização');
     assert.match(texto(ana.respostas[0]!), /roça, sítio, horta ou vaso/);
 
     await ana.localizacao(-16.6869, -49.2648);
@@ -164,7 +164,7 @@ describe('Conversa no Telegram', () => {
     banco.salvarLugar('77', 'Goiânia/GO', -16.69, -49.26);
     assert.match(await k7.ferramentas.get('previsao_periodo')!.run({ periodo: 'fds' }, ctx), /Previsão do fim de semana · Goiânia\/GO[\s\S]*imagem com estes dados/);
     assert.equal(k7.anexadas.length, 1);
-    assert.match(await k7.ferramentas.get('definir_planta')!.run({ planta: 'feijao', plantio: '2026-10-01', irrigada: true }, ctx), /Feijão registrada, plantio 2026-10-01, irrigada/);
+    assert.match(await k7.ferramentas.get('definir_planta')!.run({ planta: 'feijao', plantio: '2026-10-01', irrigada: true }, ctx), /Feijão registrada em Goiânia\/GO, plantio 2026-10-01, irrigada/);
     assert.match(await k7.ferramentas.get('epoca_de_plantio')!.run({ plantas: ['soja', 'alface'] }, ctx), /Soja: plantar de 11\/set a 10\/jan \(risco até 30%\)[\s\S]*Alface: o ZARC não tem zoneamento/);
     assert.match(await k7.ferramentas.get('balanco_agua')!.run({}, ctx), /Feijão: fase .* déficit [\d.]+ mm/);
     assert.match(await k7.ferramentas.get('definir_planta')!.run({ planta: 'feijao', remover: true }, ctx), /removida/);
