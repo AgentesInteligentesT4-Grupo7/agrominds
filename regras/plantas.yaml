@@ -1,0 +1,235 @@
+# Plantas que o bot conhece, para quem planta em qualquer escala: roça, sítio, horta, quintal ou vaso.
+#
+# A ÉPOCA DE PLANTIO vem do ZARC (Zoneamento Agrícola de Risco Climático, MAPA/Embrapa), por município: o bot baixa
+# a tábua de risco do portal de dados abertos uma vez por safra (npm run fita -- agrominds zarc). Aqui só se diz qual
+# cultura do ZARC corresponde a cada planta. Planta sem `zarc` (as folhosas e temperos da horta, que o ZARC não
+# zoneia) não tem calendário oficial: o bot diz isso em vez de inventar.
+#
+# Campos de cada planta:
+#   nome        como aparece para a pessoa
+#   grupo       lavoura (roça, pasto, café) | horta (horta, quintal, pomar, vaso)
+#   cultura     de regras/culturas.yaml: fases e Kc usados nos alertas e na conta de água
+#   zarc        épocas: cada uma com o nome (opcional) e as culturas do ZARC (nome exato da coluna Nome_cultura)
+#   perene      true: sem data de plantio por safra (o bot pergunta a fase)
+#   ciclo_dias  ciclo médio do plantio à colheita, só para estimar a fase e a colheita de quem informou a data de
+#               plantio. VALOR DE REFERÊNCIA A REVISAR (muda muito com a cultivar); sem ele, o bot não estima.
+
+revisado_por: null
+
+plantas:
+  # ---------------------------------------------------------------- lavoura, pasto e café
+  soja:
+    nome: Soja
+    grupo: lavoura
+    cultura: soja
+    ciclo_dias: 120
+    zarc:
+      - culturas: [Soja]
+  milho:
+    nome: Milho
+    grupo: lavoura
+    cultura: milho
+    ciclo_dias: 130
+    zarc:
+      - nome: 1ª safra
+        culturas: [Milho 1ª Safra]
+      - nome: 2ª safra (safrinha)
+        culturas: [Milho 2ª Safra]
+  feijao:
+    nome: Feijão
+    grupo: lavoura
+    cultura: feijao
+    ciclo_dias: 90
+    zarc:
+      - nome: 1ª safra
+        culturas: [Feijão]
+      - nome: 2ª safra
+        culturas: [Feijão 2ª Safra]
+  feijao_caupi:
+    nome: Feijão-de-corda (caupi)
+    grupo: lavoura
+    cultura: feijao
+    ciclo_dias: 75
+    zarc:
+      - culturas: [Feijão Caupi]
+  arroz:
+    nome: Arroz
+    grupo: lavoura
+    cultura: arroz
+    ciclo_dias: 120
+    zarc:
+      - culturas: [Arroz]
+  algodao:
+    nome: Algodão
+    grupo: lavoura
+    cultura: algodao
+    ciclo_dias: 170
+    zarc:
+      - culturas: [Algodão Herbáceo]
+  sorgo:
+    nome: Sorgo
+    grupo: lavoura
+    cultura: sorgo
+    ciclo_dias: 120
+    zarc:
+      - nome: 1ª safra
+        culturas: [Sorgo Granífero]
+      - nome: 2ª safra
+        culturas: [Sorgo Granífero 2ª Safra]
+  girassol:
+    nome: Girassol
+    grupo: lavoura
+    cultura: girassol
+    ciclo_dias: 110
+    zarc:
+      - culturas: [Girassol]
+  amendoim:
+    nome: Amendoim
+    grupo: lavoura
+    cultura: amendoim
+    ciclo_dias: 120
+    zarc:
+      - culturas: [Amendoim]
+  cana:
+    nome: Cana-de-açúcar
+    grupo: lavoura
+    cultura: cana
+    perene: true
+    zarc:
+      - culturas: [Cana-de-Açúcar (outros fins), Cana-de-Açúcar (açúcar e álcool)]
+  cafe:
+    nome: Café
+    grupo: lavoura
+    cultura: cafe
+    perene: true
+    zarc:
+      - nome: arábica (plantio)
+        culturas: [Café Arábica Implantação]
+      - nome: conilon/canéfora (plantio)
+        culturas: [Café Canéfora Implantação]
+  pastagem:
+    nome: Pastagem
+    grupo: lavoura
+    cultura: pastagem
+    perene: true
+    zarc:
+      - culturas: [Forrageira Pecuária]
+
+  # ---------------------------------------------------------------- horta, quintal e pomar
+  mandioca:
+    nome: Mandioca
+    grupo: horta
+    cultura: mandioca
+    ciclo_dias: 300
+    zarc:
+      - culturas: ["Mandioca (aipim, macaxeira)"]
+  cebola:
+    nome: Cebola
+    grupo: horta
+    cultura: hortalicas
+    ciclo_dias: 150
+    zarc:
+      - culturas: [Cebola]
+  alho:
+    nome: Alho
+    grupo: horta
+    cultura: hortalicas
+    ciclo_dias: 150
+    zarc:
+      - culturas: [Alho Nobre]
+  batata:
+    nome: Batata
+    grupo: horta
+    cultura: hortalicas
+    ciclo_dias: 110
+    zarc:
+      - culturas: [Batata Mesa]
+  melancia:
+    nome: Melancia
+    grupo: horta
+    cultura: hortalicas
+    ciclo_dias: 85
+    zarc:
+      - culturas: [Melancia]
+  banana:
+    nome: Banana
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Banana Prata Implantação, Banana Maçã Implantação, Banana Cavendish Implantação]
+  maracuja:
+    nome: Maracujá
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Maracujá]
+  mamao:
+    nome: Mamão
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Mamão]
+  limao:
+    nome: Limão
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Limão Implantação]
+  laranja:
+    nome: Laranja
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Laranja Implantação]
+  manga:
+    nome: Manga
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Manga]
+  abacaxi:
+    nome: Abacaxi
+    grupo: horta
+    cultura: frutiferas
+    perene: true
+    zarc:
+      - culturas: [Abacaxi]
+  # Sem zoneamento oficial: recebem os alertas do tempo, mas o calendário diz que não há dado do ZARC.
+  alface:
+    nome: Alface
+    grupo: horta
+    cultura: hortalicas
+  couve:
+    nome: Couve
+    grupo: horta
+    cultura: hortalicas
+  cebolinha:
+    nome: Cebolinha
+    grupo: horta
+    cultura: hortalicas
+  coentro:
+    nome: Coentro
+    grupo: horta
+    cultura: hortalicas
+  salsinha:
+    nome: Salsinha
+    grupo: horta
+    cultura: hortalicas
+  tomate:
+    nome: Tomate
+    grupo: horta
+    cultura: hortalicas
+  cenoura:
+    nome: Cenoura
+    grupo: horta
+    cultura: hortalicas
+  pimenta:
+    nome: Pimenta
+    grupo: horta
+    cultura: hortalicas

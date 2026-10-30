@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>AgroMinds · Minhas plantas</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main id="app"></main>
+<script src="comum.js"></script>
+<script>
+// O que a pessoa planta: fase, quanto falta para colher, irrigação e a janela de plantio (ZARC) no município.
+const EXEMPLO = {
+  titulo: 'Minhas plantas',
+  lugar: 'Goiânia/GO',
+  hoje: 30,
+  plantas: [
+    { nome: 'Soja', grupo: 'lavoura', fase: 'Florindo', irrigada: false, plantio: '01/09', dias: 59, ciclo: 120, colheita: '29/12', janela: 'Plantar de 21/set a 10/jan', agora: true, risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20] },
+    { nome: 'Milho', grupo: 'lavoura', fase: 'Preparando o plantio', irrigada: false, janela: '1ª safra: 21/out a 31/dez · safrinha: 1/jan a 10/fev', agora: true, risco: [20, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 20, 20] },
+    { nome: 'Alface', grupo: 'horta', fase: 'Crescendo', irrigada: true, janela: 'Sem zoneamento oficial (ZARC) para esta planta', agora: null, risco: null },
+  ],
+  rodape: 'Janelas: ZARC (MAPA/Embrapa), solo de textura média · colheita estimada pelo ciclo médio (referência)',
+};
+
+const GRUPO = { lavoura: '🚜', horta: '🥬' };
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+desenhar(window.DADOS ?? EXEMPLO, (d) => `
+  <header class="topo">
+    <div>
+      <h1>${esc(d.titulo)}</h1>
+      <div class="sub">${esc(d.lugar)} · ${d.plantas.length} planta${d.plantas.length === 1 ? '' : 's'}</div>
+    </div>
+    <div class="marca">🌱 AgroMinds</div>
+  </header>
+  <section class="corpo">
+    <div class="plantas">
+      ${d.plantas.map((p) => `
+        <div class="planta">
+          <div class="cab">
+            <span class="nome">${GRUPO[p.grupo] ?? '🌱'} ${esc(p.nome)}</span>
+            <span>
+              ${p.fase ? `<span class="chip verde">${esc(p.fase)}</span>` : ''}
+              ${p.irrigada ? '<span class="chip azul">💧 irrigada</span>' : ''}
+            </span>
+          </div>
+          ${p.dias != null && p.ciclo
+            ? `<div class="barra"><i style="width:${Math.max(3, Math.min(100, (p.dias / p.ciclo) * 100))}%"></i></div>
+               <div class="info"><span>Plantada em ${esc(p.plantio)} · ${p.dias} dias</span><span>${p.passou ? 'Já passou do ciclo: colheu?' : `Colheita estimada: ${esc(p.colheita)}`}</span></div>`
+            : ''}
+          <div class="info" style="margin-top:6px"><span>${p.agora === true ? '🟢 ' : p.agora === false ? '⚪ ' : ''}${esc(p.janela)}</span></div>
+          ${p.risco ? `
+            <div class="faixa-meses">${p.risco.map((r, i) => `<i class="${r ? 'r' + r : ''}${i + 1 === d.hoje ? ' hoje' : ''}"></i>`).join('')}</div>
+            <div class="meses-rotulo">${MESES.map((m) => `<span>${m}</span>`).join('')}</div>` : ''}
+        </div>`).join('')}
+    </div>
+    <div class="legenda">
+      <span><i style="background:var(--plantio-20)"></i>época de plantio (risco 20%)</span>
+      <span><i style="background:var(--plantio-30)"></i>30%</span>
+      <span><i style="background:var(--plantio-40)"></i>40%</span>
+      <span><i style="background:#fff;outline:2px solid var(--quente)"></i>hoje</span>
+    </div>
+  </section>
+  <div class="rodape">${esc(d.rodape)}</div>
+`);
+</script>
+</body>
+</html>

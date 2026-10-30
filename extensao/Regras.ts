@@ -59,6 +59,53 @@ export interface Resultado {
   dia: string;
   /** É aviso de risco (vai fora do boletim) ou recomendação do dia (só no boletim e no /clima). */
   alerta: boolean;
+  /** Plantas a que o aviso se refere (regras de cultura ou fase); ausente nos avisos gerais do tempo. */
+  plantas?: string[];
+}
+
+/** Chave para não repetir o mesmo aviso: regra, plantas e dia. */
+export function chaveDe(r: Resultado): string {
+  return `${r.regra}${r.plantas?.length ? `@${r.plantas.join('+')}` : ''}:${r.dia}`;
+}
+
+/** Regra que vale para qualquer planta (geada, chuva, vento...): sai uma vez só, mesmo com várias plantas. */
+function geral(r: Regra): boolean {
+  return (r.tipo ?? 'alerta') !== 'balanco' && (!r.culturas || r.culturas === 'todas') && (!r.fases || r.fases === 'todas');
+}
+
+const PESO_SEV: Record<Severidade, number> = { info: 0, atencao: 1, grave: 2 };
+
+/**
+ * Avalia as regras para todas as plantas da pessoa. Os avisos gerais saem uma vez (com a severidade mais alta entre
+ * as plantas: geada é grave para quem está florindo); os de cultura ou fase dizem a que plantas se referem, e o
+ * mesmo aviso para várias plantas vira um só ("Soja e milho · ...").
+ */
+export function avaliarTodas(regras: Regra[], p: Previsao, lavouras: Lavoura[], culturas: Cultura[], nomes: (l: Lavoura) => string, agora = new Date()): Resultado[] {
+  if (!lavouras.length) return avaliarRegras(regras, p, undefined, culturas, agora);
+  const gerais = new Map<string, Resultado>();
+  const especificos = new Map<string, { r: Resultado; lavouras: Lavoura[] }>();
+  for (const l of lavouras) {
+    for (const r of avaliarRegras(regras, p, l, culturas, agora)) {
+      const regra = regras.find((x) => x.id === r.regra);
+      if (regra && geral(regra)) {
+        const atual = gerais.get(r.regra);
+        if (!atual || PESO_SEV[r.severidade] > PESO_SEV[atual.severidade]) gerais.set(r.regra, r);
+        continue;
+      }
+      const chave = `${r.regra}|${r.dia}|${r.texto}`;
+      const junto = especificos.get(chave);
+      if (junto) junto.lavouras.push(l);
+      else especificos.set(chave, { r, lavouras: [l] });
+    }
+  }
+  const unico = lavouras.length === 1;
+  return [
+    ...gerais.values(),
+    ...[...especificos.values()].map(({ r, lavouras: ls }) => {
+      const nomesTxt = ls.map(nomes).join(', ').replace(/, ([^,]*)$/, ' e $1');
+      return { ...r, plantas: ls.map((l) => l.planta), texto: unico ? r.texto : `${nomesTxt} · ${r.texto}` };
+    }),
+  ];
 }
 
 /** Lê `regras/culturas.yaml`: cada cultura herda as fases padrão e muda só as que lista. */

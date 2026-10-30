@@ -6,7 +6,9 @@ import type { ModoEnvio } from '../Banco.js';
 import { UserFacingError, errorMessage } from '../erros.js';
 import { horaLocal, somarHoras } from '../OpenMeteo.js';
 import { balancoHidrico } from '../Regras.js';
-import type { Contexto } from '../telegram.js';
+import { calendarioDe, minhasPlantas, plantasDe, previsaoDoPeriodo, tempoAgora } from '../Servicos.js';
+import type { Contexto } from '../Servicos.js';
+import type { OpcaoPeriodo } from '../Visual.js';
 import { type Admin, Admins, type Papel } from './Admins.js';
 
 export interface PainelOpcoes {
@@ -108,6 +110,8 @@ export class PainelServidor {
       if (req.method === 'GET' && p === '/eu') return this.json(res, admin);
       if (req.method === 'GET' && p === '/resumo') return this.json(res, this.resumo());
       if (req.method === 'GET' && p === '/culturas') return this.json(res, this.c.culturas());
+      if (req.method === 'GET' && p === '/plantas') return this.json(res, this.c.plantas().map((x) => ({ id: x.id, nome: x.nome, grupo: x.grupo, cultura: x.cultura, perene: x.perene, zoneada: x.zarc.length > 0 })));
+      if (req.method === 'GET' && p === '/zarc') return this.json(res, { arquivos: this.c.zarc.arquivos() });
       if (req.method === 'GET' && p === '/usuarios') return this.json(res, this.usuarios());
       if (req.method === 'POST' && p === '/convites') {
         escrita();
@@ -129,13 +133,31 @@ export class PainelServidor {
           escrita();
           return this.json(res, await this.c.notificador.boletimAgora(id));
         }
-        if (req.method === 'POST' && acao === '/lavoura') {
+        if (req.method === 'POST' && acao === '/plantas') {
           escrita();
-          const b = (await lerJson(req)) as { cultura?: string; fase?: string; irrigada?: boolean };
-          const cultura = this.c.culturas().find((x) => x.id === b.cultura);
-          if (!cultura || !b.fase || !cultura.fases[b.fase]) throw new HttpErro(400, 'Cultura ou fase inválida');
-          return this.json(res, this.c.banco.salvarLavoura(id, { cultura: cultura.id, fase: b.fase, irrigada: b.irrigada === true }));
+          const b = (await lerJson(req)) as { planta?: string; fase?: string; irrigada?: boolean; plantio?: string | null; remover?: boolean };
+          const planta = this.c.plantas().find((x) => x.id === b.planta);
+          if (!planta) throw new HttpErro(400, 'Planta inválida');
+          if (b.remover === true) {
+            this.c.banco.removerLavoura(id, planta.id);
+            return this.json(res, { ok: true });
+          }
+          const cultura = this.c.culturas().find((x) => x.id === planta.cultura);
+          if (b.fase && !cultura?.fases[b.fase]) throw new HttpErro(400, 'Fase inválida');
+          if (b.plantio && !/^\d{4}-\d{2}-\d{2}$/.test(b.plantio)) throw new HttpErro(400, 'Data de plantio: AAAA-MM-DD');
+          return this.json(
+            res,
+            this.c.banco.salvarLavoura(id, planta.id, {
+              cultura: planta.cultura,
+              ...(b.fase ? { fase: b.fase } : {}),
+              ...(typeof b.irrigada === 'boolean' ? { irrigada: b.irrigada } : {}),
+              ...(b.plantio !== undefined ? { plantio: b.plantio || null } : {}),
+              pendente: false,
+            }),
+          );
         }
+        // O mesmo print que a pessoa recebe no Telegram (para ver e baixar para a apresentação).
+        if (req.method === 'GET' && acao === '/imagem') return this.imagem(id, url.searchParams.get('layout') ?? 'tempo', res);
         if (req.method === 'POST' && acao === '/preferencias') {
           escrita();
           const b = (await lerJson(req)) as { modo?: ModoEnvio; horarios?: number[]; pausado?: boolean };
@@ -144,7 +166,7 @@ export class PainelServidor {
           return this.json(res, this.c.banco.salvarPreferencias(id, { ...(b.modo ? { modo: b.modo } : {}), ...(b.horarios ? { horarios: b.horarios } : {}), ...(typeof b.pausado === 'boolean' ? { pausado: b.pausado } : {}) }));
         }
         if (req.method === 'GET' && acao === '/tempo') return this.json(res, await this.tempo(id, Number(url.searchParams.get('dias')) || 30));
-        if (req.method === 'GET' && acao === '/balanco') return this.json(res, await this.balanco(id));
+        if (req.method === 'GET' && acao === '/balanco') return this.json(res, await this.balanco(id, url.searchParams.get('planta') ?? undefined));
       }
       if (req.method === 'GET' && p === '/envios') {
         const q = url.searchParams;
@@ -216,7 +238,7 @@ export class PainelServidor {
         criadoEm: a?.criadoEm ?? null,
         ultimoContato: a?.ultimoContato ?? null,
         lugar: banco.lugar(id) ?? null,
-        lavoura: banco.lavoura(id) ?? null,
+        plantas: plantasDe(this.c, id).map((l) => ({ ...l, nome: this.c.plantas().find((x) => x.id === l.planta)?.nome ?? l.planta })),
         preferencias: banco.preferencias(id),
         ultimoEnvio: ultimo ? { quando: ultimo.quando, tipo: ultimo.tipo, entregue: ultimo.entregue } : null,
       };
@@ -272,13 +294,28 @@ export class PainelServidor {
     return { lugar: { nome: lugar.nome, celula: lugar.celula }, timezone: p.timezone, consultadoEm: p.consultadoEm, ocorrido, previsao, comparacao, alertas };
   }
 
-  private async balanco(userId: string) {
+  /** Conta de água de uma planta (padrão: a primeira irrigada, ou a primeira). */
+  private async balanco(userId: string, planta?: string) {
     const lugar = this.c.banco.lugar(userId);
-    const lavoura = this.c.banco.lavoura(userId);
-    if (!lugar || !lavoura) throw new HttpErro(404, 'Essa pessoa ainda não tem lugar e lavoura cadastrados');
+    const lavouras = plantasDe(this.c, userId);
+    const lavoura = planta ? lavouras.find((l) => l.planta === planta) : (lavouras.find((l) => l.irrigada) ?? lavouras[0]);
+    if (!lugar || !lavoura) throw new HttpErro(404, 'Essa pessoa ainda não tem lugar e plantas cadastrados');
     const kc = this.c.culturas().find((x) => x.id === lavoura.cultura)?.fases[lavoura.fase]?.kc ?? 1;
     const p = await this.c.meteo.previsao(lugar.celula);
-    return { kc, ...balancoHidrico(p, kc, 7, 2, lavoura.irrigouEm), limite: 25 };
+    return { planta: lavoura.planta, kc, ...balancoHidrico(p, kc, 7, 2, lavoura.irrigouEm), limite: 25 };
+  }
+
+  private async imagem(userId: string, layout: string, res: http.ServerResponse): Promise<void> {
+    if (!this.c.banco.lugar(userId)) throw new HttpErro(404, 'Essa pessoa ainda não mandou a localização');
+    const s =
+      layout === 'plantas' ? await minhasPlantas(this.c, userId)
+      : layout === 'calendario' ? await calendarioDe(this.c, userId)
+      : layout === 'plantar' ? await calendarioDe(this.c, userId, { todas: true, sugerir: true })
+      : layout === 'previsao' ? await previsaoDoPeriodo(this.c, userId, '7' as OpcaoPeriodo)
+      : await tempoAgora(this.c, userId, 'clima');
+    if (typeof s.mensagem === 'string' || !s.mensagem.imagem) throw new HttpErro(503, 'Não deu para gerar a imagem (sem Chrome/Edge ou AGRO_IMAGEM=off); veja o log da fita.');
+    res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-disposition': `inline; filename="agrominds-${layout}.png"` });
+    res.end(s.mensagem.imagem);
   }
 
   /** Arquivos do Angular; rotas desconhecidas devolvem o index.html (navegação do próprio app). */

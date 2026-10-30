@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>AgroMinds · Previsão</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main id="app"></main>
+<script src="comum.js"></script>
+<script>
+// Previsão para o período que a pessoa escolheu: até 3 dias, gráfico hora a hora; mais que isso, dia a dia.
+const EXEMPLO = {
+  titulo: 'Previsão · próximos 7 dias',
+  lugar: 'Goiânia/GO',
+  periodo: 'sexta 30/10 a quinta 05/11',
+  dias: [
+    { nome: 'Sex', data: '30/10', max: 31, min: 19, chuva: 2.4, probabilidade: 40, codigo: 80, vento: 22 },
+    { nome: 'Sáb', data: '31/10', max: 29, min: 18, chuva: 12, probabilidade: 80, codigo: 63, vento: 30 },
+    { nome: 'Dom', data: '01/11', max: 27, min: 18, chuva: 0, probabilidade: 10, codigo: 2, vento: 18 },
+    { nome: 'Seg', data: '02/11', max: 30, min: 19, chuva: 0, probabilidade: 5, codigo: 0, vento: 15 },
+    { nome: 'Ter', data: '03/11', max: 32, min: 20, chuva: 0.4, probabilidade: 20, codigo: 2, vento: 14 },
+    { nome: 'Qua', data: '04/11', max: 33, min: 21, chuva: 8, probabilidade: 60, codigo: 95, vento: 40 },
+    { nome: 'Qui', data: '05/11', max: 30, min: 20, chuva: 20, probabilidade: 85, codigo: 63, vento: 25 },
+  ],
+  horas: null,
+  resumo: ['Chuva no período: 42,8 mm (mais em quinta)', 'Mais quente: quarta, 33°', 'Mais frio: sábado, 18°'],
+  rodape: 'Dados: Open-Meteo.com · previsão de modelos meteorológicos (não é medição no seu local)',
+};
+
+desenhar(window.DADOS ?? EXEMPLO, (d) => `
+  <header class="topo">
+    <div>
+      <h1>${esc(d.titulo)}</h1>
+      <div class="sub">${esc(d.lugar)} · ${esc(d.periodo)}</div>
+    </div>
+    <div class="marca">🌱 AgroMinds</div>
+  </header>
+  <section class="corpo">
+    <div class="cartao">
+      ${d.horas && d.horas.length > 1
+        ? `<h2>Hora a hora <small><span style="color:#d84315">━</span> temperatura · <span style="color:#90caf9">▮</span> chuva (mm/h)</small></h2>${graficoTempoChuva(d.horas, { marcarCada: Math.max(3, Math.round(d.horas.length / 9)) })}`
+        : `<h2>Dia a dia <small>mínima e máxima · chuva</small></h2>${graficoDias(d.dias)}`}
+    </div>
+    <div class="cartao">
+      <div class="dias" style="grid-template-columns: repeat(${Math.min(d.dias.length, 7)}, 1fr); grid-auto-flow: row;">
+        ${d.dias.map((x) => `
+          <div class="dia">
+            <div class="nome">${esc(x.nome)}</div>
+            <div class="data">${esc(x.data)}</div>
+            ${icone(x.codigo, 44)}
+            <div><span class="max">${num(x.max)}°</span> <span class="min">${num(x.min)}°</span></div>
+            <div class="mm">${num(x.chuva, 1)} mm</div>
+            <div class="mm">${num(x.probabilidade)}%</div>
+            ${x.vento != null ? `<div class="data">💨 ${num(x.vento)} km/h</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>
+    ${d.resumo.length ? `<div class="cartao"><h2>Resumo do período</h2><ul class="recs">${d.resumo.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
+  </section>
+  <div class="rodape">${esc(d.rodape)}</div>
+`);
+</script>
+</body>
+</html>

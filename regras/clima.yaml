@@ -26,7 +26,7 @@
     - { variavel: temperature_2m, agregacao: minimo, janela: proximas_36h, operador: "<=", valor: 3 }
   severidade: atencao
   grave_se: { operador: "<=", valor: 1 }
-  mensagem: "🥶 Risco de geada: mínima prevista de {valor}°C ({quando}). Lavouras jovens e baixadas são as mais afetadas; evite irrigar à noite em baixadas."
+  mensagem: "🥶 Risco de geada: mínima prevista de {valor}°C ({quando}). Plantas novas e baixadas são as mais afetadas; na horta, cubra os canteiros e vasos à noite."
   fonte: "Referência inicial: temperatura de abrigo ≤ 3 °C costuma indicar geada na relva"
   revisado_por: null
 
@@ -69,7 +69,7 @@
     - { variavel: temperature_2m, agregacao: media, janela: proximas_48h, operador: "<=", valor: 28 }
   severidade: atencao
   fases: [vegetativo, florescimento, enchimento]
-  mensagem: "🍄 Umidade alta e temperatura amena nos próximos 2 dias ({valor} h de folha molhada previstas) favorecem doenças fúngicas. Vale vistoriar a lavoura. (Produto e dose só com receituário agronômico.)"
+  mensagem: "🍄 Umidade alta e temperatura amena nos próximos 2 dias ({valor} h de folha molhada previstas) favorecem doenças fúngicas. Vale olhar as folhas. (Produto e dose só com receituário agronômico.)"
   fonte: "Referência inicial: ≥ 10 h/dia de molhamento com 18–28 °C por 2 dias"
   revisado_por: null
 
@@ -84,6 +84,7 @@
 
 - id: colheita
   titulo: Janela de colheita
+  culturas: [soja, milho, feijao, arroz, trigo, algodao, sorgo, cafe]
   fases: [colheita]
   quando:
     - { variavel: precipitation, agregacao: soma, janela: proximas_72h, operador: "<", valor: 2 }
@@ -130,7 +131,7 @@
   dias: 7
   limite_mm: 25
   chuva_prevista_dias: 2
-  mensagem_irrigar: "💧 Irrigação: a lavoura perdeu cerca de {deficit} mm a mais do que choveu nos últimos {dias} dias, e só {chuva_prevista} mm estão previstos em 2 dias. Vale irrigar, de preferência cedo ou no fim da tarde."
+  mensagem_irrigar: "💧 Irrigação: a plantação perdeu cerca de {deficit} mm a mais do que choveu nos últimos {dias} dias, e só {chuva_prevista} mm estão previstos em 2 dias. Vale irrigar, de preferência cedo ou no fim da tarde."
   mensagem_esperar: "💧 Irrigação: pode esperar — {chuva_prevista} mm de chuva previstos nos próximos 2 dias devem repor o que falta ({deficit} mm)."
   mensagem_ok: "💧 Irrigação: sem falta de água por enquanto (balanço de {deficit} mm)."
   fonte: "FAO-56: ET0 × Kc da fase; limite inicial de 25 mm (ajustar pelo tipo de solo)"

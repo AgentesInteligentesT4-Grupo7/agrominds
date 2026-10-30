@@ -10,16 +10,28 @@ export interface Lugar {
   lon: number;
   /** Célula de grade (0,1°): lugares próximos dividem a mesma previsão. */
   celula: string;
+  /** Sigla do estado (da localização): ajuda a achar o município no zoneamento (ZARC). */
+  uf: string | null;
   atualizadoEm: string;
 }
 
+/** Uma planta de uma pessoa (ela pode ter várias: soja e milho, ou alface, cebola e banana no quintal). */
 export interface Lavoura {
+  id: number;
   userId: string;
+  /** Planta de regras/plantas.yaml (ex.: alface, milho). */
+  planta: string;
+  /** Cultura de regras/culturas.yaml (fases e Kc). */
   cultura: string;
+  /** Fase informada; com a data de plantio, a fase de hoje sai do ciclo (Plantas.faseAtual). */
   fase: string;
   irrigada: boolean;
   /** Última vez que a pessoa disse "irriguei" (zera o balanço de água). */
   irrigouEm: string | null;
+  /** Data de plantio (AAAA-MM-DD), quando a pessoa contou. */
+  plantio: string | null;
+  /** Escolhida, mas ainda falta perguntar quando plantou (ou a fase). */
+  pendente: boolean;
   atualizadoEm: string;
 }
 
@@ -45,12 +57,13 @@ export interface Envio {
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS lugares (
-    user_id TEXT PRIMARY KEY, nome TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, celula TEXT NOT NULL,
+    user_id TEXT PRIMARY KEY, nome TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, celula TEXT NOT NULL, uf TEXT,
     atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS lavouras (
-    user_id TEXT PRIMARY KEY, cultura TEXT NOT NULL, fase TEXT NOT NULL, irrigada INTEGER NOT NULL DEFAULT 0,
-    irrigou_em TEXT, atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, planta TEXT NOT NULL, cultura TEXT NOT NULL,
+    fase TEXT NOT NULL, irrigada INTEGER NOT NULL DEFAULT 0, irrigou_em TEXT, plantio TEXT, pendente INTEGER NOT NULL DEFAULT 0,
+    atualizado_em TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE (user_id, planta)
   );
   CREATE TABLE IF NOT EXISTS preferencias (
     user_id TEXT PRIMARY KEY, modo TEXT NOT NULL DEFAULT 'boletim', horarios TEXT NOT NULL DEFAULT '[6,18]',
@@ -85,17 +98,28 @@ export function celulaDe(lat: number, lon: number): string {
 /** Tabelas da AgroMinds no banco próprio da fita (k7.sql). */
 export class Banco {
   constructor(private readonly sql: FitaSql) {
+    // Versão 0.2 (uma lavoura por pessoa, sem planta): vira a primeira planta de cada pessoa.
+    const antigas = sql.all<{ name: string }>('PRAGMA table_info(lavouras)').map((c) => c.name);
+    const migrar = antigas.length > 0 && !antigas.includes('planta');
+    if (migrar) sql.exec('ALTER TABLE lavouras RENAME TO lavouras_v1');
     sql.exec(SCHEMA);
+    if (migrar) {
+      sql.exec(`INSERT INTO lavouras (user_id, planta, cultura, fase, irrigada, irrigou_em, atualizado_em)
+        SELECT user_id, cultura, cultura, fase, irrigada, irrigou_em, atualizado_em FROM lavouras_v1; DROP TABLE lavouras_v1;`);
+    }
+    if (!sql.all<{ name: string }>('PRAGMA table_info(lugares)').some((c) => c.name === 'uf')) sql.exec('ALTER TABLE lugares ADD COLUMN uf TEXT');
   }
 
-  salvarLugar(userId: string, nome: string, lat: number, lon: number): Lugar {
+  /** `uf` vem do endereço da localização; sem ele, sai do nome ("Goiânia/GO"). */
+  salvarLugar(userId: string, nome: string, lat: number, lon: number, uf?: string | null): Lugar {
     // Só 2 casas (~1 km): o suficiente para o tempo, sem guardar a coordenada exata da pessoa.
     const la = Math.round(lat * 100) / 100;
     const lo = Math.round(lon * 100) / 100;
+    const sigla = uf ?? /\/([A-Z]{2})$/.exec(nome)?.[1] ?? null;
     this.sql.run(
-      `INSERT INTO lugares (user_id, nome, lat, lon, celula) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET nome = excluded.nome, lat = excluded.lat, lon = excluded.lon, celula = excluded.celula, atualizado_em = datetime('now')`,
-      userId, nome, la, lo, celulaDe(la, lo),
+      `INSERT INTO lugares (user_id, nome, lat, lon, celula, uf) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET nome = excluded.nome, lat = excluded.lat, lon = excluded.lon, celula = excluded.celula, uf = excluded.uf, atualizado_em = datetime('now')`,
+      userId, nome, la, lo, celulaDe(la, lo), sigla,
     );
     return this.lugar(userId)!;
   }
@@ -109,26 +133,43 @@ export class Banco {
     return this.sql.all<LugarRow>('SELECT * FROM lugares ORDER BY atualizado_em DESC').map(toLugar);
   }
 
-  salvarLavoura(userId: string, dados: Partial<Pick<Lavoura, 'cultura' | 'fase' | 'irrigada'>>): Lavoura {
-    const atual = this.lavoura(userId);
-    const cultura = dados.cultura ?? atual?.cultura ?? 'soja';
-    const fase = dados.fase ?? atual?.fase ?? 'vegetativo';
-    const irrigada = dados.irrigada ?? atual?.irrigada ?? false;
+  /** Cria ou muda uma planta da pessoa (o que não vier em `dados` fica como estava). */
+  salvarLavoura(userId: string, planta: string, dados: Partial<Pick<Lavoura, 'cultura' | 'fase' | 'irrigada' | 'plantio' | 'pendente'>> = {}): Lavoura {
+    const atual = this.lavoura(userId, planta);
+    const l = {
+      cultura: dados.cultura ?? atual?.cultura ?? planta,
+      fase: dados.fase ?? atual?.fase ?? 'vegetativo',
+      irrigada: dados.irrigada ?? atual?.irrigada ?? false,
+      plantio: dados.plantio !== undefined ? dados.plantio : (atual?.plantio ?? null),
+      pendente: dados.pendente ?? atual?.pendente ?? false,
+    };
     this.sql.run(
-      `INSERT INTO lavouras (user_id, cultura, fase, irrigada) VALUES (?, ?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET cultura = excluded.cultura, fase = excluded.fase, irrigada = excluded.irrigada, atualizado_em = datetime('now')`,
-      userId, cultura, fase, irrigada ? 1 : 0,
+      `INSERT INTO lavouras (user_id, planta, cultura, fase, irrigada, plantio, pendente) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, planta) DO UPDATE SET cultura = excluded.cultura, fase = excluded.fase, irrigada = excluded.irrigada,
+         plantio = excluded.plantio, pendente = excluded.pendente, atualizado_em = datetime('now')`,
+      userId, planta, l.cultura, l.fase, l.irrigada ? 1 : 0, l.plantio, l.pendente ? 1 : 0,
     );
-    return this.lavoura(userId)!;
+    return this.lavoura(userId, planta)!;
   }
 
-  irrigou(userId: string): void {
-    this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ?", userId);
+  removerLavoura(userId: string, planta: string): void {
+    this.sql.run('DELETE FROM lavouras WHERE user_id = ? AND planta = ?', userId, planta);
   }
 
-  lavoura(userId: string): Lavoura | undefined {
-    const r = this.sql.get<{ user_id: string; cultura: string; fase: string; irrigada: number; irrigou_em: string | null; atualizado_em: string }>('SELECT * FROM lavouras WHERE user_id = ?', userId);
-    return r && { userId: r.user_id, cultura: r.cultura, fase: r.fase, irrigada: r.irrigada === 1, irrigouEm: r.irrigou_em, atualizadoEm: r.atualizado_em };
+  /** "Irriguei": zera a conta de água de uma planta ou, sem `planta`, de todas as irrigadas. */
+  irrigou(userId: string, planta?: string): void {
+    if (planta) this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ? AND planta = ?", userId, planta);
+    else this.sql.run("UPDATE lavouras SET irrigou_em = datetime('now') WHERE user_id = ? AND irrigada = 1", userId);
+  }
+
+  lavoura(userId: string, planta: string): Lavoura | undefined {
+    const r = this.sql.get<LavouraRow>('SELECT * FROM lavouras WHERE user_id = ? AND planta = ?', userId, planta);
+    return r && toLavoura(r);
+  }
+
+  /** As plantas da pessoa, na ordem em que foram escolhidas. */
+  lavouras(userId: string): Lavoura[] {
+    return this.sql.all<LavouraRow>('SELECT * FROM lavouras WHERE user_id = ? ORDER BY id', userId).map(toLavoura);
   }
 
   preferencias(userId: string): Preferencias {
@@ -208,7 +249,34 @@ interface LugarRow {
   lat: number;
   lon: number;
   celula: string;
+  uf: string | null;
   atualizado_em: string;
 }
 
-const toLugar = (r: LugarRow): Lugar => ({ userId: r.user_id, nome: r.nome, lat: r.lat, lon: r.lon, celula: r.celula, atualizadoEm: r.atualizado_em });
+const toLugar = (r: LugarRow): Lugar => ({ userId: r.user_id, nome: r.nome, lat: r.lat, lon: r.lon, celula: r.celula, uf: r.uf ?? null, atualizadoEm: r.atualizado_em });
+
+interface LavouraRow {
+  id: number;
+  user_id: string;
+  planta: string;
+  cultura: string;
+  fase: string;
+  irrigada: number;
+  irrigou_em: string | null;
+  plantio: string | null;
+  pendente: number;
+  atualizado_em: string;
+}
+
+const toLavoura = (r: LavouraRow): Lavoura => ({
+  id: r.id,
+  userId: r.user_id,
+  planta: r.planta,
+  cultura: r.cultura,
+  fase: r.fase,
+  irrigada: r.irrigada === 1,
+  irrigouEm: r.irrigou_em,
+  plantio: r.plantio,
+  pendente: r.pendente === 1,
+  atualizadoEm: r.atualizado_em,
+});

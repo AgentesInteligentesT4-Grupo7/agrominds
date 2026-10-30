@@ -15,7 +15,7 @@ export const HOURLY = [
   'soil_moisture_9_to_27cm',
   'weather_code',
 ] as const;
-const DAILY = ['temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'precipitation_probability_max', 'et0_fao_evapotranspiration', 'wind_gusts_10m_max', 'sunrise', 'sunset'];
+const DAILY = ['weather_code', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'precipitation_probability_max', 'et0_fao_evapotranspiration', 'wind_gusts_10m_max', 'sunrise', 'sunset'];
 const CURRENT = ['temperature_2m', 'relative_humidity_2m', 'precipitation', 'weather_code', 'wind_speed_10m', 'wind_gusts_10m'];
 
 export interface Previsao {
@@ -27,7 +27,7 @@ export interface Previsao {
   /** Usou o último dado guardado porque o Open-Meteo não respondeu. */
   desatualizada?: boolean;
   atual: Record<string, number | string>;
-  /** Séries hora a hora: `time` (local, "2026-10-30T14:00") e uma lista por variável. 7 dias atrás + 7 à frente. */
+  /** Séries hora a hora: `time` (local, "2026-10-30T14:00") e uma lista por variável. 7 dias atrás + 16 à frente. */
   horas: Record<string, Array<number | null>> & { time: string[] };
   dias: Record<string, Array<number | string | null>> & { time: string[] };
 }
@@ -67,7 +67,7 @@ export class OpenMeteo {
       latitude: lat!,
       longitude: lon!,
       timezone: 'auto',
-      forecast_days: '7',
+      forecast_days: '16',
       past_days: '7',
       wind_speed_unit: 'kmh',
       hourly: HOURLY.join(','),

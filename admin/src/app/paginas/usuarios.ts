@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { RouterLink } from '@angular/router';
-import { Api, type Cultura, MODOS, type Usuario, mensagemDeErro, utc } from '../api';
+import { Api, MODOS, type Usuario, mensagemDeErro, utc } from '../api';
 
 @Component({
   selector: 'agro-usuarios',
@@ -61,7 +61,7 @@ import { Api, type Cultura, MODOS, type Usuario, mensagemDeErro, utc } from '../
         <div class="tabela">
           <table>
             <thead>
-              <tr><th>Pessoa</th><th>Situação</th><th>Lugar</th><th>Lavoura</th><th>Recebe</th><th>Último envio</th><th></th></tr>
+              <tr><th>Pessoa</th><th>Situação</th><th>Lugar</th><th>Plantas</th><th>Recebe</th><th>Último envio</th><th></th></tr>
             </thead>
             <tbody>
               @for (u of filtrados(); track u.userId) {
@@ -127,7 +127,6 @@ export class Usuarios {
   protected readonly modos = MODOS;
   protected readonly utc = utc;
   readonly usuarios = signal<Usuario[]>([]);
-  readonly culturas = signal<Cultura[]>([]);
   readonly busca = signal('');
   readonly mensagem = signal('');
   readonly convite = signal<{ link: string; expiraEm: string; qr: string } | null>(null);
@@ -142,7 +141,6 @@ export class Usuarios {
 
   constructor() {
     void this.carregar();
-    this.api.culturas().then((c) => this.culturas.set(c)).catch(() => undefined);
   }
 
   async carregar(): Promise<void> {
@@ -154,9 +152,8 @@ export class Usuarios {
   }
 
   lavoura(u: Usuario): string {
-    if (!u.lavoura) return '—';
-    const c = this.culturas().find((x) => x.id === u.lavoura!.cultura);
-    return `${c?.nome ?? u.lavoura.cultura} · ${c?.fases[u.lavoura.fase]?.nome ?? u.lavoura.fase}${u.lavoura.irrigada ? ' · irrigada' : ''}`;
+    if (!u.plantas.length) return '—';
+    return u.plantas.map((l) => `${l.nome}${l.irrigada ? ' 💧' : ''}`).join(', ');
   }
 
   async status(u: Usuario, status: 'ativo' | 'bloqueado'): Promise<void> {

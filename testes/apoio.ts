@@ -1,13 +1,25 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { FitaApi, FitaSql, TelegramCtx, TelegramResposta } from '../extensao/k7.js';
-import type { Previsao } from '../extensao/OpenMeteo.js';
+import fs from 'node:fs';
+import { Banco } from '../extensao/Banco.js';
+import type { FitaApi, FitaSql, FitaToolCtx, TelegramCtx, TelegramResposta } from '../extensao/k7.js';
+import { Layouts } from '../extensao/Layouts.js';
+import { Notificador } from '../extensao/Notificador.js';
+import type { OpenMeteo, Previsao } from '../extensao/OpenMeteo.js';
+import { culturasDoZarc, lerPlantas } from '../extensao/Plantas.js';
+import { lerCulturas, lerRegras } from '../extensao/Regras.js';
+import type { Base, Contexto } from '../extensao/Servicos.js';
+import { Zarc } from '../extensao/Zarc.js';
 
 /** Os testes rodam pelo K7, na pasta da fita (npm run fita -- agrominds testes, que informa K7_DIR): o leitor de YAML vem dele. */
 const k7Dir = process.env.K7_DIR ?? path.resolve('../../ParreiraClaw');
 export const lerYaml = (createRequire(path.join(k7Dir, 'package.json'))('js-yaml') as { load(t: string): unknown }).load;
-const resvg = createRequire(path.join(k7Dir, 'package.json'))('@resvg/resvg-js') as { Resvg: new (svg: string, o: unknown) => { render(): { asPng(): Uint8Array } } };
+/** Navegador do K7 (playwright-core) para os testes que tiram o print de verdade dos layouts. */
+export const playwright = (): { chromium: { launch(o: unknown): Promise<any> } } => createRequire(path.join(k7Dir, 'package.json'))('playwright-core');
+
+/** 'PNG' de mentira: o K7 falso guarda o HTML em vez de abrir o navegador. */
+export const PNG_FALSO = Buffer.concat([Buffer.from([0x89]), Buffer.from('PNG'), Buffer.alloc(16)]);
 
 /** Banco da fita nos testes: o SQLite que já vem no Node (sem pacotes). */
 export function sqlEmMemoria(): FitaSql {
@@ -46,6 +58,12 @@ export class K7Falso {
   readonly ferramentas = new Map<string, { run(args: Record<string, unknown>, ctx: { userId?: string }): Promise<string> }>();
   readonly enviados: Array<{ userId: string; mensagem: string | TelegramResposta }> = [];
   readonly tarefas: string[] = [];
+  /** Páginas que a fita mandou "fotografar" (util.htmlParaPng). */
+  readonly htmls: string[] = [];
+  /** Imagens que as ferramentas anexaram à resposta. */
+  readonly anexadas: Buffer[] = [];
+  /** Simula uma máquina sem Chrome/Edge. */
+  semNavegador = false;
   /** Quem o bot não consegue alcançar (ex.: bloqueou o bot). */
   readonly inalcancaveis = new Set<string>();
   acessos: Array<{ userId: number; nome: string; username: string | null; status: 'pendente' | 'ativo' | 'bloqueado'; origem: string; criadoEm: string; ultimoContato: string | null }> = [];
@@ -64,7 +82,12 @@ export class K7Falso {
         limitador: () => ({ run: (_c, t) => t() }),
         emParalelo: (itens, _m, t) => Promise.all(itens.map(t)),
         lerYaml: (texto) => lerYaml(texto),
-        svgParaPng: async (svg) => Buffer.from(new resvg.Resvg(svg, { font: { loadSystemFonts: true } }).render().asPng()),
+        svgParaPng: async () => PNG_FALSO,
+        htmlParaPng: async (html) => {
+          if (this.semNavegador) throw new Error('sem Chrome/Edge');
+          this.htmls.push(html);
+          return PNG_FALSO;
+        },
       },
       processoPrincipal: false,
       tarefa: (nome) => void this.tarefas.push(nome),
@@ -89,6 +112,11 @@ export class K7Falso {
         },
       },
     };
+  }
+
+  /** Contexto de uma ferramenta chamada pelo agente nesta conversa. */
+  ctxFerramenta(userId?: string): FitaToolCtx {
+    return { ...(userId ? { userId } : {}), progresso: () => undefined, limparProgresso: () => undefined, anexarMidia: () => undefined, anexarImagem: (png) => void this.anexadas.push(png) };
   }
 
   /** Conversa de mentira com uma pessoa: o que o bot respondeu fica em `respostas`. */
@@ -156,4 +184,53 @@ export function previsaoSintetica(agoraLocal: string, ajuste: (hora: string, h: 
 /** "agora" em UTC para uma hora local (fuso −3 h). */
 export function quando(agoraLocal: string): Date {
   return new Date(Date.parse(`${agoraLocal}:00Z`) + 3 * 3600_000);
+}
+
+/** Tábua do ZARC de exemplo (formato do portal): Goiânia e Porto Alegre, com soja, milho 2ª safra e cebola irrigada. */
+export function tabuaZarc(): string[] {
+  const cab = 'Nome_cultura;SafraIni;SafraFin;Cod_Cultura;Cod_Ciclo;Cod_Solo;geocodigo;UF;municipio;Cod_Clima;Nome_Clima;Cod_Outros_Manejos;Nome_Outros_Manejos;Produtividade;Cod_NM;Cod_Munic;Cod_Meso;Cod_Micro;Portaria;' + Array.from({ length: 36 }, (_, i) => `dec${i + 1}`).join(';');
+  const linha = (cultura: string, ciclo: string, solo: string, geo: string, uf: string, mun: string, manejo: string, decs: Record<number, number>) =>
+    [cultura, '2026', '2027', '1', ciclo, solo, geo, uf, mun, '0', 'Não se aplica', manejo === 'Irrigado' ? '2' : '1', manejo, '', '', '1', '1', '1', 'Port.1', ...Array.from({ length: 36 }, (_, i) => String(decs[i + 1] ?? 0))].join(';');
+  const faixa = (de: number, ate: number, r = 20) => Object.fromEntries(Array.from({ length: 36 }, (_, i) => i + 1).filter((d) => (de <= ate ? d >= de && d <= ate : d >= de || d <= ate)).map((d) => [d, r]));
+  return [
+    '﻿' + cab,
+    // Soja em Goiânia: dois ciclos no solo médio (AD3 = 13); o arenoso (11) com janela menor.
+    linha('Soja', '21', '13', '5208707', 'GO', 'Goiânia', 'Sequeiro', { ...faixa(26, 1), 26: 40 }),
+    linha('Soja', '22', '13', '5208707', 'GO', 'Goiânia', 'Sequeiro', { ...faixa(26, 36), 26: 30 }),
+    linha('Soja', '21', '11', '5208707', 'GO', 'Goiânia', 'Sequeiro', faixa(30, 34)),
+    linha('Milho 2ª Safra', '20', '13', '5208707', 'GO', 'Goiânia', 'Sequeiro', { ...faixa(1, 5), 5: 30 }),
+    linha('Cebola', '20', '13', '5208707', 'GO', 'Goiânia', 'Irrigado', faixa(9, 22)),
+    // Linha sem nenhum decêndio indicado: não acrescenta janela.
+    linha('Banana Prata Implantação', '13', '2', '5208707', 'GO', 'Goiânia', 'Sequeiro', {}),
+    linha('Banana Prata Implantação', '13', '2', '5208707', 'GO', 'Goiânia', 'Irrigado', faixa(1, 36)),
+    linha('Soja', '21', '13', '4314902', 'RS', 'Porto Alegre', 'Sequeiro', faixa(29, 36)),
+    // Cultura fora do catálogo: ignorada.
+    linha('Palma Forrageira', '13', '2', '5208707', 'GO', 'Goiânia', 'Sequeiro', faixa(1, 36)),
+  ];
+}
+
+export async function* emLinhas(linhas: string[]): AsyncIterable<string> {
+  yield* linhas;
+}
+
+export const regrasDaFita = () => lerRegras(lerYaml(fs.readFileSync(path.join('regras', 'clima.yaml'), 'utf8')));
+export const culturasDaFita = () => lerCulturas(lerYaml(fs.readFileSync(path.join('regras', 'culturas.yaml'), 'utf8')));
+export const plantasDaFita = () => lerPlantas(lerYaml(fs.readFileSync(path.join('regras', 'plantas.yaml'), 'utf8')));
+
+/** A fita montada com o K7 falso, uma previsão fixa no lugar do Open-Meteo e (por padrão) a tábua do ZARC de exemplo. */
+export async function montarFita(previsao: () => Previsao, opcoes: { zarc?: boolean; env?: Record<string, string> } = {}) {
+  const k7 = new K7Falso();
+  const api = k7.api(opcoes.env);
+  const banco = new Banco(api.sql);
+  const meteo = { previsao: async () => previsao() } as unknown as OpenMeteo;
+  const zarc = new Zarc(api.sql);
+  if (opcoes.zarc !== false) await zarc.importar(emLinhas(tabuaZarc()), culturasDoZarc(plantasDaFita()), { arquivo: 'safra', nome: 'Tábua de risco - Safra 2026/2027', url: 'teste' });
+  const base: Base = { k7: api, banco, meteo, zarc, layouts: new Layouts(api), regras: regrasDaFita, culturas: culturasDaFita, plantas: plantasDaFita, nomeDoLugar: async () => ({ nome: 'Goiânia/GO', uf: 'GO' }) };
+  const contexto: Contexto = { ...base, notificador: new Notificador(base) };
+  return { k7, api, banco, zarc, contexto };
+}
+
+/** Os dados que a fita pôs na página (window.DADOS) da última imagem gerada. */
+export function dadosDaPagina(html: string): any {
+  return JSON.parse(/window\.DADOS = (.*);<\/script>/.exec(html)![1]!);
 }

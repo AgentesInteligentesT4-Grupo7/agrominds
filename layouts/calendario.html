@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>AgroMinds · Calendário de plantio</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main id="app"></main>
+<script src="comum.js"></script>
+<script>
+// Calendário de plantio do município (ZARC), de julho a junho (o ano-safra), com hoje marcado e, nas plantas da
+// pessoa com data de plantio, uma linha azul do plantio à colheita estimada.
+const EXEMPLO = {
+  titulo: 'Calendário de plantio',
+  subtitulo: 'Goiânia/GO · zoneamento agrícola (ZARC) 2026/2027',
+  hoje: 30,
+  destaque: { titulo: 'Dá para plantar agora', agora: ['Soja', 'Milho (1ª safra)', 'Feijão (1ª safra)', 'Mandioca'], logo: [] },
+  linhas: [
+    { nome: 'Soja', risco: [20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20], minha: true, sua: { de: 25, ate: 36 } },
+    { nome: 'Milho', epoca: '1ª safra', risco: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 20, 20] },
+    { nome: 'Milho', epoca: '2ª safra (safrinha)', risco: [20, 20, 20, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    { nome: 'Cebola', manejo: 'Irrigado', risco: [0, 0, 0, 0, 0, 0, 0, 40, 40, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 40, 0, 0, 0, 0, 0, 40, 20, 30, 40, 0, 0, 0, 0] },
+    { nome: 'Alface', semDado: 'sem_zoneamento', risco: [] },
+  ],
+  rodape: 'Fonte: ZARC (MAPA/Embrapa), solo de textura média, melhor caso entre os ciclos · confira a portaria do seu município',
+};
+
+// Ano-safra: de julho (decêndio 19) a junho (decêndio 18).
+const ORDEM = Array.from({ length: 36 }, (_, i) => ((i + 18) % 36) + 1);
+const MESES = ['jul', 'ago', 'set', 'out', 'nov', 'dez', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun'];
+const ESTACOES = [['inverno', 2], ['primavera', 3], ['verão', 3], ['outono', 3], ['inverno', 1]];
+const SEM_DADO = { sem_zoneamento: 'sem zoneamento oficial para esta planta', nao_indicado: 'o ZARC não indica plantio no seu município' };
+
+function dentro(d, de, ate) {
+  return de <= ate ? d >= de && d <= ate : d >= de || d <= ate;
+}
+
+desenhar(window.DADOS ?? EXEMPLO, (d) => `
+  <header class="topo">
+    <div>
+      <h1>📅 ${esc(d.titulo)}</h1>
+      <div class="sub">${esc(d.subtitulo)}</div>
+    </div>
+    <div class="marca">🌱 AgroMinds</div>
+  </header>
+  <section class="corpo">
+    ${d.destaque ? `
+      <div class="cartao">
+        <h2>${esc(d.destaque.titulo)}</h2>
+        <div class="lista-sugestoes">
+          ${d.destaque.agora.map((n) => `<span>${esc(n)}</span>`).join('') || '<span class="logo">Nada com janela aberta neste decêndio</span>'}
+          ${d.destaque.logo.map((n) => `<span class="logo">${esc(n)}</span>`).join('')}
+        </div>
+        ${d.destaque.logo.length ? '<div class="legenda"><span><i style="background:#fff3e0"></i>abre nas próximas semanas</span></div>' : ''}
+      </div>` : ''}
+    <div class="cartao">
+      ${d.linhas.length ? `
+      <table class="cal">
+        <colgroup><col style="width:150px"><col span="36"></colgroup>
+        <thead>
+          <tr><th></th>${ESTACOES.map(([n, meses]) => `<th class="estacao" colspan="${meses * 3}">${n}</th>`).join('')}</tr>
+          <tr><th></th>${MESES.map((m) => `<th colspan="3">${m}</th>`).join('')}</tr>
+        </thead>
+        <tbody>
+          ${d.linhas.map((l) => `
+            <tr class="${l.minha ? 'minha' : ''}">
+              <td class="nome">${l.minha ? '★ ' : ''}${esc(l.nome)}${l.epoca || l.manejo === 'Irrigado' ? `<small>${esc([l.epoca, l.manejo === 'Irrigado' ? 'irrigado' : ''].filter(Boolean).join(' · '))}</small>` : ''}</td>
+              ${l.semDado
+                ? `<td class="semdado" colspan="36">${SEM_DADO[l.semDado]}</td>`
+                : ORDEM.map((dec, i) => {
+                    const r = l.risco[dec - 1];
+                    const sua = l.sua && dentro(dec, l.sua.de, l.sua.ate);
+                    return `<td class="d${i % 3 === 0 ? ' m' : ''}${dec === d.hoje ? ' hoje' : ''}">${r ? `<div class="b r${r}"></div>` : ''}${sua ? '<div class="s"></div>' : ''}</td>`;
+                  }).join('')}
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="legenda">
+        <span><i style="background:var(--plantio-20)"></i>plantio indicado (risco 20%)</span>
+        <span><i style="background:var(--plantio-30)"></i>risco 30%</span>
+        <span><i style="background:var(--plantio-40)"></i>risco 40%</span>
+        <span><i style="background:var(--sua);height:4px"></i>sua planta (do plantio à colheita estimada)</span>
+        <span><i style="border-left:2px dashed var(--quente);width:2px;border-radius:0"></i>hoje</span>
+      </div>` : `<p class="suave">${esc(d.vazio ?? 'Sem plantas para mostrar.')}</p>`}
+    </div>
+  </section>
+  <div class="rodape">${esc(d.rodape)}</div>
+`);
+</script>
+</body>
+</html>

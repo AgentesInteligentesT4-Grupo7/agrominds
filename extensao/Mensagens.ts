@@ -1,6 +1,11 @@
-import type { Lavoura, Lugar } from './Banco.js';
+import type { Lugar } from './Banco.js';
 import { type Previsao, horaLocal } from './OpenMeteo.js';
-import { type Cultura, type Resultado, quandoLegivel } from './Regras.js';
+import { type Resultado, quandoLegivel } from './Regras.js';
+
+/**
+ * Versões em texto do que vai como imagem (layouts/): ficam registradas no histórico do painel e vão no lugar da
+ * imagem quando ela não pode ser gerada. A legenda da foto é só a primeira linha e os avisos.
+ */
 
 /** Código do tempo da OMM (o Open-Meteo usa) em palavras e ícone. */
 export function tempo(codigo: number | null | undefined): string {
@@ -31,32 +36,29 @@ export function proximosDias(p: Previsao, quantos: number, agora = new Date()): 
   return p.dias.time.flatMap((d, i) => (d >= hoje ? [i] : [])).slice(0, quantos).map((i) => dia(p, i, agoraLocal));
 }
 
-export function cabecalho(lugar: Lugar, lavoura: Lavoura | undefined, culturas: Cultura[]): string {
-  const c = culturas.find((x) => x.id === lavoura?.cultura);
-  const fase = c?.fases[lavoura?.fase ?? '']?.nome;
-  return `${lugar.nome}${c ? ` (${c.nome.toLowerCase()}${fase ? `, ${fase.toLowerCase()}` : ''}${lavoura?.irrigada ? ', irrigada' : ''})` : ''}`;
+export function cabecalho(lugar: Lugar, resumoPlantas: string): string {
+  return `${lugar.nome}${resumoPlantas ? ` (${resumoPlantas})` : ''}`;
 }
 
 /** Resposta do /clima: agora, próximos dias e o que as regras dizem. */
-export function mensagemClima(p: Previsao, lugar: Lugar, lavoura: Lavoura | undefined, culturas: Cultura[], resultados: Resultado[], agora = new Date()): string {
+export function mensagemClima(p: Previsao, lugar: Lugar, resumoPlantas: string, resultados: Resultado[], agora = new Date()): string {
   const a = p.atual;
   return [
-    `🌱 ${cabecalho(lugar, lavoura, culturas)}`,
+    `🌱 ${cabecalho(lugar, resumoPlantas)}`,
     '',
     `Agora: ${num(a.temperature_2m)}°C, ${tempo(a.weather_code as number)}, umidade ${num(a.relative_humidity_2m)}%, vento ${num(a.wind_speed_10m)} km/h`,
     ...proximosDias(p, 4, agora),
     ...(resultados.length ? ['', ...ordenar(resultados).map((r) => r.texto)] : []),
-    ...(lavoura ? [] : ['', 'Diga o que você planta com /lavoura para receber recomendações da sua cultura.']),
+    ...(resumoPlantas ? [] : ['', 'Conte o que você planta em /plantas para receber recomendações para as suas plantas.']),
     '',
     rodape(p),
   ].join('\n');
 }
 
 /** Boletim dos horários escolhidos: o dia, os riscos e as recomendações. */
-export function mensagemBoletim(p: Previsao, lugar: Lugar, lavoura: Lavoura | undefined, culturas: Cultura[], resultados: Resultado[], agora = new Date()): string {
-  const hora = Number(horaLocal(agora, p.utcOffsetSeconds).slice(11, 13));
+export function mensagemBoletim(p: Previsao, lugar: Lugar, resumoPlantas: string, resultados: Resultado[], agora = new Date()): string {
   return [
-    `${hora < 12 ? '🌅' : '🌇'} Boletim das ${hora}h — ${cabecalho(lugar, lavoura, culturas)}`,
+    `${tituloBoletim(p, agora)} — ${cabecalho(lugar, resumoPlantas)}`,
     '',
     ...proximosDias(p, 2, agora),
     ...(resultados.length ? ['', ...ordenar(resultados).map((r) => r.texto)] : ['', '✅ Nada que exija atenção nas próximas horas.']),
@@ -65,15 +67,26 @@ export function mensagemBoletim(p: Previsao, lugar: Lugar, lavoura: Lavoura | un
   ].join('\n');
 }
 
+export function tituloBoletim(p: Previsao, agora = new Date()): string {
+  const hora = Number(horaLocal(agora, p.utcOffsetSeconds).slice(11, 13));
+  return `${hora < 12 ? '🌅' : '🌇'} Boletim das ${hora}h`;
+}
+
 export function mensagemAlerta(lugar: Lugar, resultados: Resultado[], p: Previsao): string {
   return [`⚠️ Aviso para ${lugar.nome}`, '', ...ordenar(resultados).map((r) => r.texto), '', rodape(p)].join('\n');
 }
 
-function ordenar(r: Resultado[]): Resultado[] {
+/** Legenda curta da foto: o título e só os alertas (o resto está na imagem). */
+export function legenda(titulo: string, resultados: Resultado[]): string {
+  const alertas = ordenar(resultados).filter((r) => r.alerta);
+  return [titulo, ...alertas.map((r) => `${r.severidade === 'grave' ? '🔴' : '🟠'} ${r.titulo}`)].join('\n');
+}
+
+export function ordenar(r: Resultado[]): Resultado[] {
   const peso = { grave: 0, atencao: 1, info: 2 };
   return [...r].sort((a, b) => peso[a.severidade] - peso[b.severidade]);
 }
 
 function rodape(p: Previsao): string {
-  return `Dados: Open-Meteo.com${p.desatualizada ? ' (última previsão guardada; o serviço não respondeu agora)' : ''} · /clima /lavoura /alertas`;
+  return `Dados: Open-Meteo.com${p.desatualizada ? ' (última previsão guardada; o serviço não respondeu agora)' : ''} · /clima /previsao /plantas /calendario`;
 }

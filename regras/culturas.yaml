@@ -1,8 +1,10 @@
-# Culturas e fases que o bot oferece, com o coeficiente de cultura Kc de cada fase (FAO-56, valores típicos).
-# Kc × ET0 = água que a lavoura perde por dia. VALORES DE REFERÊNCIA: revisar com agrônomo(a) para a região.
+# Culturas (grupos de manejo) com as fases e o coeficiente de cultura Kc de cada fase (FAO-56, valores típicos).
+# Kc × ET0 = água que a planta perde por dia. VALORES DE REFERÊNCIA: revisar com agrônomo(a) para a região.
+# As plantas que a pessoa escolhe (regras/plantas.yaml) apontam para uma destas culturas.
 #
 # Cada cultura usa as `fases_padrao` e muda só o que lista em `fases` (ou só as dela, com `so_estas_fases: true`).
-# Para acrescentar uma cultura, copie um bloco e ajuste; o bot passa a oferecer depois de reiniciar.
+# Com a data de plantio, a fase sai do ciclo: inicial até 12% do ciclo, vegetativo até 45%, florescimento até 60%,
+# enchimento até 85% e colheita depois.
 
 revisado_por: null   # nome de quem conferiu os valores
 
@@ -43,6 +45,52 @@ culturas:
       florescimento: { nome: Desenvolvimento pleno, kc: 1.05 }
       enchimento:    { nome: Formação da parte colhida, kc: 1.0 }
       colheita:      { nome: Perto da colheita, kc: 0.9 }
+  arroz:
+    nome: Arroz
+  trigo:
+    nome: Trigo
+    fases:
+      inicial:       { nome: Plantada / emergência, kc: 0.3 }
+      florescimento: { nome: Espigando / florindo, kc: 1.15 }
+      colheita:      { nome: Perto da colheita, kc: 0.3 }
+  algodao:
+    nome: Algodão
+    fases:
+      inicial:       { nome: Plantada / emergência, kc: 0.35 }
+      florescimento: { nome: Florindo / formando maçãs, kc: 1.2 }
+      enchimento:    { nome: Maçãs se abrindo, kc: 1.0 }
+      colheita:      { nome: Perto da colheita, kc: 0.6 }
+  sorgo:
+    nome: Sorgo
+  girassol:
+    nome: Girassol
+  amendoim:
+    nome: Amendoim
+  frutiferas:
+    nome: Frutíferas
+    so_estas_fases: true
+    fases:
+      preparo:       { nome: Muda nova / plantio, kc: 0.5 }
+      vegetativo:    { nome: Crescendo, kc: 0.7 }
+      florescimento: { nome: Florada, kc: 0.85 }
+      enchimento:    { nome: Frutos se formando, kc: 0.9 }
+      colheita:      { nome: Colheita, kc: 0.8 }
+  cana:
+    nome: Cana-de-açúcar
+    fases:
+      inicial:       { nome: Brotação, kc: 0.4 }
+      vegetativo:    { nome: Perfilhamento, kc: 0.8 }
+      florescimento: { nome: Crescimento intenso, kc: 1.25 }
+      enchimento:    { nome: Acumulando açúcar, kc: 1.0 }
+      colheita:      { nome: Maturação / colheita, kc: 0.75 }
+  mandioca:
+    nome: Mandioca
+    fases:
+      inicial:       { nome: Brotação, kc: 0.3 }
+      vegetativo:    { nome: Crescendo, kc: 0.8 }
+      florescimento: { nome: Crescimento pleno, kc: 1.1 }
+      enchimento:    { nome: Engrossando a raiz, kc: 0.9 }
+      colheita:      { nome: Pronta para arrancar, kc: 0.5 }
   pastagem:
     nome: Pastagem
     so_estas_fases: true

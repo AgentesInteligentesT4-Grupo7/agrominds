@@ -1,11 +1,12 @@
 # Spec: Alertas de clima para a lavoura pelo Telegram
 
-**Versão:** 0.2 (rascunho para o grupo; 0.2 acrescenta o painel administrativo em Angular)
+**Versão:** 0.3 (0.2 acrescentou o painel em Angular; 0.3, o público amplo, várias plantas, o ZARC e as imagens: §15)
 **Status:** Implementada em parte (30/10/2026):
-- **Feito:** pré-requisitos no tocador (§7.1); clima básico; lavouras, regras, modos de envio, sem repetição e
-  silêncio; balanço hídrico; painel Angular com usuários, envios e gráficos; cartão do tempo em imagem.
-- **Falta:** Agrofit, Bioinsumos e Agritec (precisam das chaves da Embrapa); avisos do INMET; várias lavouras por
-  pessoa (hoje uma); validação das regras por agrônomo(a).
+- **Feito:** pré-requisitos no tocador (§7.1); clima; várias plantas por pessoa (lavoura e horta); época de plantio
+  por município pelo ZARC; previsão por período (até 14 dias); tudo em imagem (layouts HTML); regras, modos de envio,
+  sem repetição e silêncio; balanço hídrico; painel Angular com usuários, plantas, imagens, envios e gráficos.
+- **Falta:** Agrofit e Bioinsumos (precisam das chaves da Embrapa); avisos do INMET; calendário oficial para as
+  hortaliças que o ZARC não zoneia; validação das regras e dos ciclos por agrônomo(a).
 **Autor:** Grupo 7 (rascunho: K7 Agent)
 **Data:** 2026-10-30
 **Reviewers:** Parreira, Grupo 7 e, para as regras agronômicas, um(a) agrônomo(a)
@@ -483,6 +484,38 @@ Retenção configurável: previsões por 90 dias, ocorrido e envios por 1 ano.
 5. Quem são os administradores do painel e quem fica só com `leitura`?
 6. O painel roda só no computador de quem cuida do bot ou vai para um servidor (VPS) durante a apresentação?
 
+## 15. Revisão 0.3: qualquer pessoa, várias plantas, ZARC e imagens
+
+Pedidos do grupo depois da 0.2, já implementados:
+
+- **Público amplo.** Não é só para o produtor grande: quem tem horta, quintal ou vasos usa o mesmo bot. Os textos não
+  presumem roça (“Enviar minha localização”, “o que você planta”), e o catálogo tem lavoura **e** horta/pomar.
+- **Várias plantas por pessoa.** A localização vem uma vez e fica; a pessoa marca quantas plantas quiser
+  (`regras/plantas.yaml`), diz quando plantou (lavoura) ou a fase (perenes) e quais irriga. Com a data de plantio, a
+  fase de hoje sai do ciclo médio (referência a revisar). Avisos gerais (geada, chuva, vento) saem uma vez, com a
+  severidade mais alta entre as plantas; os de cultura ou fase dizem a que plantas se referem.
+- **Época de plantio oficial, por município.** Em vez de meses escritos à mão, a fita usa a **Tábua de risco do ZARC**
+  (MAPA/Embrapa), dados abertos, gratuita e sem chave: datas de plantio por município, cultura, solo, ciclo e manejo,
+  em decêndios, com o risco (20, 30 ou 40%). Dois arquivos: a safra atual (grãos) e “Perene, Olerícola e Sem Safra”
+  (café, cana, frutas, cebola, alho, batata, melancia, mandioca, pastagem). A fita baixa uma vez por safra (perenes:
+  uma vez por ano; ~750 MB lidos aos poucos), guarda só as culturas do catálogo (~25 MB: por município, cultura e
+  manejo, o menor risco entre ciclos e cultivares em cada classe de solo) e mostra o solo de textura média. O ZARC não
+  zoneia folhosas e temperos (alface, couve, cebolinha, coentro, tomate de mesa): para essas, o bot diz que não há
+  calendário oficial. A colheita, que o ZARC não traz, só aparece para quem informou a data de plantio (plantio + ciclo
+  médio, marcada como estimativa).
+- **Tudo em imagem.** Telegram não mostra tabelas nem gráficos: boletim, `/clima`, `/previsao`, `/plantas`,
+  `/calendario`, `/plantar` e os alertas vão como o “print” de um layout em HTML (`layouts/`), com uma legenda curta;
+  o texto completo fica no histórico do painel e vai no lugar da imagem se ela falhar. O K7 ganhou
+  `util.htmlParaPng` (Chrome ou Edge já instalados, via playwright-core, sem rede na página) e `anexarImagem` nas
+  ferramentas do agente.
+- **Previsão por período.** `/previsao` com botões (hoje, amanhã, fim de semana, 3, 7 ou 14 dias); o Open-Meteo dá
+  16 dias (além de 7, tendência). Até 3 dias, gráfico hora a hora; mais, dia a dia.
+- **Sugestão do mês.** No primeiro boletim de cada mês, vai junto “O que plantar agora” no município (`/plantar`).
+
+Comandos novos: `/previsao`, `/plantas` (substitui `/lavoura`), `/calendario`, `/plantar`. Ferramentas do agente:
+`previsao_periodo`, `epoca_de_plantio`, `minhas_plantas`, `definir_planta` (substituem `previsao_dias` e
+`definir_lavoura`). Comando de terminal: `npm run fita -- agrominds zarc [--forcar]`.
+
 ## Referências
 
 - Open-Meteo, documentação da Forecast API: https://open-meteo.com/en/docs
@@ -496,3 +529,5 @@ Retenção configurável: previsões por 90 dias, ocorrido e envios por 1 ano.
 - ngx-echarts (v22 para o Angular 22): https://www.npmjs.com/package/ngx-echarts
 - FAO-56 (evapotranspiração e coeficientes de cultura Kc): Allen et al., *Crop evapotranspiration*, FAO Irrigation
   and Drainage Paper 56, 1998.
+- ZARC, Tábua de risco (dados abertos do MAPA): https://dados.agricultura.gov.br/dataset/tabua-de-risco-zoneamento-agricola-de-risco-climatico
+- ZARC, dicionário de dados da tábua de risco (2026): https://dados.agricultura.gov.br/dataset/6d3d141c-885e-41a4-ab7f-dc8ff323b96f/resource/bebb0ebb-bc75-460c-b900-a7a1ebd87bee/download/dicionario-de-dados-tabua-de-risco-2026.pdf

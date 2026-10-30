@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>AgroMinds · Tempo</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main id="app"></main>
+<script src="comum.js"></script>
+<script>
+// Tempo agora, próximos dias, gráfico das próximas 24 h e avisos (boletim e /clima).
+const EXEMPLO = {
+  titulo: 'Boletim das 6h',
+  lugar: 'Goiânia/GO',
+  quando: 'Sexta, 30/10 às 6h',
+  plantas: 'soja (florindo) e alface',
+  agora: { temperatura: 21, descricao: 'Poucas nuvens', codigo: 2, umidade: 78, vento: 6, chuvaHoje: 2.4 },
+  dias: [
+    { nome: 'Hoje', data: '30/10', max: 31, min: 19, chuva: 2.4, probabilidade: 40, codigo: 80 },
+    { nome: 'Amanhã', data: '31/10', max: 29, min: 18, chuva: 12, probabilidade: 80, codigo: 63 },
+    { nome: 'Domingo', data: '01/11', max: 27, min: 18, chuva: 0, probabilidade: 10, codigo: 2 },
+    { nome: 'Segunda', data: '02/11', max: 30, min: 19, chuva: 0, probabilidade: 5, codigo: 0 },
+  ],
+  horas: Array.from({ length: 25 }, (_, i) => ({ rotulo: `${(6 + i) % 24}h`, temperatura: 24 - 6 * Math.cos(((i + 3) / 24) * 2 * Math.PI), chuva: i > 8 && i < 12 ? 2 + i % 3 : 0 })),
+  avisos: [{ severidade: 'atencao', titulo: 'Chuva forte', texto: '🌧️ Chuva forte prevista: 25 mm (amanhã às 16h).' }],
+  recomendacoes: ['✅ Pulverização: boas horas hoje 7h–10h.', '💧 Soja · Irrigação: pode esperar — 12 mm previstos em 2 dias.'],
+  rodape: 'Dados: Open-Meteo.com · regras em revisão por agrônomo(a)',
+};
+
+desenhar(window.DADOS ?? EXEMPLO, (d) => `
+  <header class="topo">
+    <div>
+      <h1>${esc(d.titulo)} · ${esc(d.lugar)}</h1>
+      <div class="sub">${esc(d.quando)}${d.plantas ? ` · ${esc(d.plantas)}` : ''}</div>
+    </div>
+    <div class="marca">🌱 AgroMinds</div>
+  </header>
+  <section class="corpo">
+    <div class="cartao">
+      <div class="agora">
+        <div>${icone(d.agora.codigo, 110)}</div>
+        <div>
+          <div class="temp">${num(d.agora.temperatura)}°</div>
+          <div class="desc">${esc(d.agora.descricao)}</div>
+        </div>
+      </div>
+      <div class="metricas">
+        <div class="metrica"><b>${num(d.agora.umidade)}%</b><span>umidade</span></div>
+        <div class="metrica"><b>${num(d.agora.vento)} km/h</b><span>vento</span></div>
+        <div class="metrica"><b>${num(d.agora.chuvaHoje, 1)} mm</b><span>chuva hoje</span></div>
+        <div class="metrica"><b>${num(d.dias[0]?.probabilidade)}%</b><span>chance de chuva</span></div>
+      </div>
+    </div>
+    <div class="cartao">
+      <h2>Próximos dias</h2>
+      <div class="dias">
+        ${d.dias.map((x) => `
+          <div class="dia">
+            <div class="nome">${esc(x.nome)}</div>
+            <div class="data">${esc(x.data)}</div>
+            ${icone(x.codigo, 54)}
+            <div><span class="max">${num(x.max)}°</span> <span class="min">${num(x.min)}°</span></div>
+            <div class="mm">${num(x.chuva, 1)} mm · ${num(x.probabilidade)}%</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="cartao">
+      <h2>Próximas 24 horas <small><span style="color:#d84315">━</span> temperatura · <span style="color:#90caf9">▮</span> chuva (mm/h)</small></h2>
+      ${graficoTempoChuva(d.horas, { marcarCada: 3 })}
+    </div>
+    ${d.avisos.length ? `<div class="avisos">${d.avisos.map((a) => `<div class="aviso ${a.severidade}"><b>${a.severidade === 'grave' ? '⚠️ GRAVE: ' : ''}${esc(a.titulo)}</b><span>${esc(a.texto)}</span></div>`).join('')}</div>`
+      : '<div class="ok">✅ Sem alertas de risco para as próximas horas.</div>'}
+    ${d.recomendacoes.length ? `<div class="cartao"><h2>Para hoje</h2><ul class="recs">${d.recomendacoes.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : ''}
+  </section>
+  <div class="rodape">${esc(d.rodape)}</div>
+`);
+</script>
+</body>
+</html>

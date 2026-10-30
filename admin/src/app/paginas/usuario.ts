@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { RouterLink } from '@angular/router';
 import type { EChartsOption } from 'echarts';
 import { NgxEchartsDirective } from 'ngx-echarts';
-import { Api, type Balanco, type Cultura, type Envio, MODOS, type Modo, REGRAS, type Tempo, type Usuario, baixarCsv, mensagemDeErro, utc } from '../api';
+import { Api, type Balanco, type Cultura, type Envio, LAYOUTS, MODOS, type Modo, type Planta, REGRAS, type Tempo, type Usuario, baixarCsv, mensagemDeErro, utc } from '../api';
 
 const COR_SEV: Record<string, string> = { info: '#1565c0', atencao: '#b26a00', grave: '#c62828' };
 const HORAS = [5, 6, 7, 12, 17, 18, 19];
@@ -17,7 +18,7 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
 
 @Component({
   selector: 'agro-usuario',
-  imports: [RouterLink, FormsModule, DatePipe, NgxEchartsDirective, MatButtonModule, MatSelectModule, MatFormFieldModule, MatCheckboxModule],
+  imports: [RouterLink, FormsModule, DatePipe, NgxEchartsDirective, MatButtonModule, MatSelectModule, MatFormFieldModule, MatInputModule, MatCheckboxModule],
   template: `
     <section class="pagina">
       <p><a routerLink="/usuarios">← Usuários</a></p>
@@ -33,23 +34,35 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
 
         <div class="grade duas">
           <div class="cartao">
-            <h2>Lavoura</h2>
-            <div class="linha">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Cultura</mat-label>
-                <mat-select [(ngModel)]="cultura" [disabled]="!api.podeEditar()">
-                  @for (c of culturas(); track c.id) { <mat-option [value]="c.id">{{ c.nome }}</mat-option> }
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Fase</mat-label>
-                <mat-select [(ngModel)]="fase" [disabled]="!api.podeEditar()">
-                  @for (f of fases(); track f[0]) { <mat-option [value]="f[0]">{{ f[1].nome }} (Kc {{ f[1].kc }})</mat-option> }
-                </mat-select>
-              </mat-form-field>
-              <mat-checkbox [(ngModel)]="irrigada" [disabled]="!api.podeEditar()">Irrigada</mat-checkbox>
-            </div>
-            @if (api.podeEditar()) { <button mat-stroked-button type="button" (click)="salvarLavoura()">Salvar lavoura</button> }
+            <h2>Plantas ({{ u.plantas.length }})</h2>
+            @for (l of u.plantas; track l.planta) {
+              <div class="planta">
+                <span>
+                  <b>{{ l.nome }}</b> · {{ nomeFase(l.cultura, l.fase) }}
+                  @if (l.plantio) { · plantio {{ l.plantio | date: 'dd/MM/yyyy' }} }
+                  @if (l.irrigada) { · 💧 irrigada }
+                </span>
+                @if (api.podeEditar()) { <button type="button" class="link" (click)="removerPlanta(l.planta, l.nome)">remover</button> }
+              </div>
+            } @empty {
+              <p class="muted">Nenhuma planta ainda (a pessoa escolhe no Telegram, em /plantas).</p>
+            }
+            @if (api.podeEditar()) {
+              <div class="linha nova">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Planta</mat-label>
+                  <mat-select [(ngModel)]="novaPlanta">
+                    @for (p of catalogo(); track p.id) { <mat-option [value]="p.id">{{ p.grupo === 'horta' ? '🥬' : '🚜' }} {{ p.nome }}</mat-option> }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Plantio (opcional)</mat-label>
+                  <input matInput type="date" [(ngModel)]="novoPlantio">
+                </mat-form-field>
+                <mat-checkbox [(ngModel)]="novaIrrigada">Irrigada</mat-checkbox>
+                <button mat-stroked-button type="button" [disabled]="!novaPlanta" (click)="adicionarPlanta()">Adicionar</button>
+              </div>
+            }
           </div>
           <div class="cartao">
             <h2>O que recebe</h2>
@@ -74,6 +87,21 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
             }
           </div>
         </div>
+
+        @if (u.lugar) {
+          <div class="cartao">
+            <div class="titulo">
+              <h2>O que a pessoa recebe no Telegram</h2>
+              <span>
+                @for (l of layouts; track l[0]) {
+                  <button type="button" class="link" [class.sel]="layout() === l[0]" (click)="layout.set(l[0])">{{ l[1] }}</button>
+                }
+                <a class="link" [href]="api.imagem(id(), layout(), versao())" [download]="'agrominds-' + layout() + '.png'">Baixar PNG</a>
+              </span>
+            </div>
+            <img class="print" [src]="api.imagem(id(), layout(), versao())" [alt]="'Imagem ' + layout()" loading="lazy">
+          </div>
+        }
 
         @if (tempo(); as t) {
           <div class="cartao">
@@ -106,12 +134,12 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
           </div>
           <div class="grade duas">
             <div class="cartao">
-              <h2>Balanço de água da lavoura (7 dias)</h2>
+              <h2>Balanço de água (7 dias){{ balanco() ? ' · ' + nomePlanta(balanco()!.planta) : '' }}</h2>
               @if (balanco(); as b) {
                 <div echarts class="grafico" [options]="graficoBalanco()"></div>
                 <p class="muted pe">Kc {{ b.kc }} · déficit atual {{ b.deficit }} mm · chuva prevista em 2 dias {{ b.chuvaPrevista }} mm · linha vermelha: limite para avisar ({{ b.limite }} mm)</p>
               } @else {
-                <p class="muted">Cadastre a lavoura para ver o balanço.</p>
+                <p class="muted">Cadastre uma planta para ver o balanço.</p>
               }
             </div>
             <div class="cartao">
@@ -154,6 +182,9 @@ const SALVAR = { feature: { saveAsImage: { title: 'Salvar PNG', pixelRatio: 2 } 
     .cartao { margin-bottom: 16px; }
     .linha { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
     .horas { gap: 2px; }
+    .planta { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--agro-line); }
+    .nova { margin-top: 12px; }
+    .print { display: block; max-width: 100%; width: 480px; margin: 8px auto 0; border-radius: 12px; border: 1px solid var(--agro-line); }
     .alto { height: 420px; }
     .pe { font-size: 12px; margin: 6px 0 0; }
     .titulo { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -174,19 +205,22 @@ export class UsuarioDetalhe {
   protected readonly horas = HORAS;
   readonly usuario = signal<Usuario | null>(null);
   readonly culturas = signal<Cultura[]>([]);
+  readonly catalogo = signal<Planta[]>([]);
+  protected readonly layouts = LAYOUTS;
+  readonly layout = signal('tempo');
+  /** Muda a cada recarga: a imagem é gerada de novo. */
+  readonly versao = signal(0);
   readonly tempo = signal<Tempo | null>(null);
   readonly balanco = signal<Balanco | null>(null);
   readonly envios = signal<Envio[]>([]);
   readonly dias = signal(30);
   readonly mensagem = signal('');
   readonly horarios = signal<number[]>([]);
-  cultura = '';
-  fase = '';
-  irrigada = false;
+  novaPlanta = '';
+  novoPlantio = '';
+  novaIrrigada = false;
   modo: Modo = 'boletim';
   pausado = false;
-
-  readonly fases = computed(() => Object.entries(this.culturas().find((c) => c.id === this.cultura)?.fases ?? {}));
 
   constructor() {
     effect(() => void this.carregar(this.id()));
@@ -196,6 +230,7 @@ export class UsuarioDetalhe {
       if (this.usuario()?.lugar) this.api.tempo(id, dias).then((t) => this.tempo.set(t)).catch((e) => this.mensagem.set(mensagemDeErro(e)));
     });
     this.api.culturas().then((c) => this.culturas.set(c)).catch(() => undefined);
+    this.api.plantas().then((p) => this.catalogo.set(p)).catch(() => undefined);
   }
 
   async carregar(id: string): Promise<void> {
@@ -203,14 +238,12 @@ export class UsuarioDetalhe {
       const u = (await this.api.usuarios()).find((x) => x.userId === id);
       if (!u) return void this.mensagem.set('Usuário não encontrado.');
       this.usuario.set(u);
-      this.cultura = u.lavoura?.cultura ?? '';
-      this.fase = u.lavoura?.fase ?? '';
-      this.irrigada = u.lavoura?.irrigada ?? false;
       this.modo = u.preferencias.modo;
       this.pausado = u.preferencias.pausado;
       this.horarios.set([...u.preferencias.horarios]);
       this.envios.set(await this.api.envios({ usuario: id }));
-      if (u.lugar && u.lavoura) this.balanco.set(await this.api.balanco(id).catch(() => null));
+      this.versao.update((v) => v + 1);
+      this.balanco.set(u.lugar && u.plantas.length ? await this.api.balanco(id).catch(() => null) : null);
     } catch (e) {
       this.mensagem.set(mensagemDeErro(e));
     }
@@ -220,8 +253,24 @@ export class UsuarioDetalhe {
     this.horarios.update((hs) => (hs.includes(h) ? hs.filter((x) => x !== h) : [...hs, h].sort((a, b) => a - b)));
   }
 
-  async salvarLavoura(): Promise<void> {
-    await this.agir(() => this.api.salvarLavoura(this.id(), { cultura: this.cultura, fase: this.fase, irrigada: this.irrigada }), 'Lavoura salva.');
+  nomeFase(cultura: string, fase: string): string {
+    return this.culturas().find((c) => c.id === cultura)?.fases[fase]?.nome ?? fase;
+  }
+
+  nomePlanta(id: string): string {
+    return this.catalogo().find((p) => p.id === id)?.nome ?? id;
+  }
+
+  async adicionarPlanta(): Promise<void> {
+    const dados = { planta: this.novaPlanta, irrigada: this.novaIrrigada, ...(this.novoPlantio ? { plantio: this.novoPlantio } : {}) };
+    await this.agir(() => this.api.salvarPlanta(this.id(), dados), `${this.nomePlanta(this.novaPlanta)} adicionada.`);
+    this.novaPlanta = '';
+    this.novoPlantio = '';
+    this.novaIrrigada = false;
+  }
+
+  async removerPlanta(planta: string, nome: string): Promise<void> {
+    await this.agir(() => this.api.salvarPlanta(this.id(), { planta, remover: true }), `${nome} removida.`);
   }
 
   async salvarPreferencias(): Promise<void> {

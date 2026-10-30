@@ -25,10 +25,40 @@ export interface Usuario {
   criadoEm: string | null;
   ultimoContato: string | null;
   lugar: { nome: string; lat: number; lon: number; celula: string } | null;
-  lavoura: { cultura: string; fase: string; irrigada: boolean; irrigouEm: string | null } | null;
+  plantas: PlantaDaPessoa[];
   preferencias: { modo: Modo; horarios: number[]; pausado: boolean };
   ultimoEnvio: { quando: string; tipo: string; entregue: boolean } | null;
 }
+
+/** Uma planta de uma pessoa (com a fase de hoje: pela data de plantio, quando ela contou). */
+export interface PlantaDaPessoa {
+  planta: string;
+  nome: string;
+  cultura: string;
+  fase: string;
+  irrigada: boolean;
+  irrigouEm: string | null;
+  plantio: string | null;
+}
+
+/** Planta do catálogo (regras/plantas.yaml); `zoneada`: tem época de plantio no ZARC. */
+export interface Planta {
+  id: string;
+  nome: string;
+  grupo: 'lavoura' | 'horta';
+  cultura: string;
+  perene: boolean;
+  zoneada: boolean;
+}
+
+/** Imagens que a pessoa recebe no Telegram (layouts da fita). */
+export const LAYOUTS: Array<[string, string]> = [
+  ['tempo', 'Tempo agora'],
+  ['previsao', 'Previsão 7 dias'],
+  ['plantas', 'Minhas plantas'],
+  ['calendario', 'Calendário'],
+  ['plantar', 'O que plantar agora'],
+];
 
 export interface Envio {
   id: number;
@@ -73,6 +103,7 @@ export interface Tempo {
 }
 
 export interface Balanco {
+  planta: string;
   kc: number;
   deficit: number;
   chuvaPrevista: number;
@@ -146,12 +177,15 @@ export class Api {
   resumo = () => this.get<Resumo>('/resumo');
   usuarios = () => this.get<Usuario[]>('/usuarios');
   culturas = () => this.get<Cultura[]>('/culturas');
+  plantas = () => this.get<Planta[]>('/plantas');
   envios = (filtro: { usuario?: string; tipo?: string; q?: string; de?: string; ate?: string } = {}) => this.get<Envio[]>('/envios', filtro);
   tempo = (userId: string, dias = 30) => this.get<Tempo>(`/usuarios/${userId}/tempo`, { dias });
-  balanco = (userId: string) => this.get<Balanco>(`/usuarios/${userId}/balanco`);
+  balanco = (userId: string, planta?: string) => this.get<Balanco>(`/usuarios/${userId}/balanco`, { planta });
   definirStatus = (userId: string, status: 'ativo' | 'bloqueado') => this.post(`/usuarios/${userId}`, { status });
   enviarTeste = (userId: string) => this.post<{ entregue: boolean; erro?: string }>(`/usuarios/${userId}/teste`);
-  salvarLavoura = (userId: string, lavoura: { cultura: string; fase: string; irrigada: boolean }) => this.post(`/usuarios/${userId}/lavoura`, lavoura);
+  salvarPlanta = (userId: string, dados: { planta: string; fase?: string; irrigada?: boolean; plantio?: string | null; remover?: boolean }) => this.post(`/usuarios/${userId}/plantas`, dados);
+  /** Endereço do print de um layout (a imagem vem do servidor, com a sessão). */
+  imagem = (userId: string, layout: string, versao = 0) => `/api/admin/usuarios/${userId}/imagem?layout=${layout}&v=${versao}`;
   salvarPreferencias = (userId: string, p: { modo?: Modo; horarios?: number[]; pausado?: boolean }) => this.post(`/usuarios/${userId}/preferencias`, p);
   convite = (dados: { nome?: string; dias?: number; usos?: number }) => this.post<{ link: string; expiraEm: string; qr: string }>('/convites', dados);
   administradores = () => this.get<Admin[]>('/administradores');

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>AgroMinds · Alerta</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main id="app"></main>
+<script src="comum.js"></script>
+<script>
+// Alerta fora do boletim (geada, chuva forte, vento...): curto, para ler de relance.
+const EXEMPLO = {
+  lugar: 'Goiânia/GO',
+  quando: 'Sexta, 30/10 às 23h',
+  avisos: [
+    { severidade: 'grave', titulo: 'Risco de geada', texto: '🥶 Risco de geada: mínima prevista de 0,5°C (amanhã às 5h). Plantas novas e baixadas são as mais afetadas; na horta, cubra os canteiros e vasos à noite.' },
+    { severidade: 'atencao', titulo: 'Vento forte', texto: '💨 Rajadas de até 55 km/h (amanhã às 15h). Risco de acamamento; não pulverize.' },
+  ],
+  rodape: 'Dados: Open-Meteo.com · regras em revisão por agrônomo(a)',
+};
+
+desenhar(window.DADOS ?? EXEMPLO, (d) => {
+  const grave = d.avisos.some((a) => a.severidade === 'grave');
+  return `
+  <header class="topo" style="${grave ? 'background:linear-gradient(135deg,#c62828,#8e0000)' : 'background:linear-gradient(135deg,#c77700,#8a5200)'}">
+    <div>
+      <h1>⚠️ ${grave ? 'Alerta grave' : 'Atenção'} · ${esc(d.lugar)}</h1>
+      <div class="sub" style="color:#fff3e0">${esc(d.quando)}</div>
+    </div>
+    <div class="marca">🌱 AgroMinds</div>
+  </header>
+  <section class="corpo">
+    <div class="avisos">
+      ${d.avisos.map((a) => `<div class="aviso ${a.severidade}" style="padding:14px 16px"><b style="font-size:19px">${esc(a.titulo)}</b><span style="font-size:16px">${esc(a.texto)}</span></div>`).join('')}
+    </div>
+  </section>
+  <div class="rodape">${esc(d.rodape)}</div>`;
+});
+</script>
+</body>
+</html>

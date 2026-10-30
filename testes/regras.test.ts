@@ -3,14 +3,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { Lavoura } from '../extensao/Banco.js';
-import { avaliarRegras, balancoHidrico, bulboUmido, lerCulturas, lerRegras, quandoLegivel } from '../extensao/Regras.js';
+import { avaliarRegras, avaliarTodas, balancoHidrico, bulboUmido, chaveDe, lerCulturas, lerRegras, quandoLegivel } from '../extensao/Regras.js';
 import { lerYaml, previsaoSintetica, quando } from './apoio.js';
 
 const dir = path.resolve('regras');
 const regras = lerRegras(lerYaml(fs.readFileSync(path.join(dir, 'clima.yaml'), 'utf8')));
 const culturas = lerCulturas(lerYaml(fs.readFileSync(path.join(dir, 'culturas.yaml'), 'utf8')));
 const AGORA = '2026-10-30T09:00';
-const soja = (fase: string, irrigada = false): Lavoura => ({ userId: '1', cultura: 'soja', fase, irrigada, irrigouEm: null, atualizadoEm: '' });
+const planta = (p: string, cultura: string, fase: string, irrigada = false): Lavoura => ({ id: 1, userId: '1', planta: p, cultura, fase, irrigada, irrigouEm: null, plantio: null, pendente: false, atualizadoEm: '' });
+const soja = (fase: string, irrigada = false) => planta('soja', 'soja', fase, irrigada);
 const ids = (r: Array<{ regra: string }>) => r.map((x) => x.regra);
 
 describe('Regras de clima (regras/clima.yaml)', () => {
@@ -78,6 +79,21 @@ describe('Regras de clima (regras/clima.yaml)', () => {
 
     // "Irriguei" ontem: a conta recomeça.
     assert.ok(balancoHidrico(seco, 1.15, 7, 2, '2026-10-29 10:00:00', quando(AGORA)).deficit < 10);
+  });
+
+  it('várias plantas: aviso geral uma vez (o mais grave); o de fase diz a planta e junta as iguais', () => {
+    const frio = previsaoSintetica(AGORA, (hora, h) => ({ relative_humidity_2m: 95, temperature_2m: 22, ...(hora.startsWith('2026-10-31') && h === 5 ? { temperature_2m: 2.4 } : {}) }));
+    const nomes = (l: Lavoura) => ({ soja: 'Soja', milho: 'Milho', alface: 'Alface' })[l.planta as 'soja'];
+    const lavouras = [soja('florescimento'), planta('milho', 'milho', 'florescimento'), planta('alface', 'hortalicas', 'colheita')];
+    const r = avaliarTodas(regras, frio, lavouras, culturas, nomes, quando(AGORA));
+    assert.equal(r.filter((x) => x.regra === 'geada').length, 1);
+    const fungo = r.filter((x) => x.regra === 'doenca_fungica');
+    assert.equal(fungo.length, 1, 'soja e milho na mesma fase: um aviso só');
+    assert.match(fungo[0]!.texto, /^Soja e Milho · 🍄/);
+    assert.deepEqual(fungo[0]!.plantas, ['soja', 'milho']);
+    assert.equal(chaveDe(fungo[0]!), 'doenca_fungica@soja+milho:2026-10-30');
+    assert.equal(chaveDe(r.find((x) => x.regra === 'geada')!), 'geada:2026-10-31');
+    assert.equal(r.filter((x) => x.regra === 'pulverizacao').length, 1);
   });
 
   it('bulbo úmido e datas legíveis', () => {

@@ -13,7 +13,7 @@ import { Api, mensagemDeErro } from '../api';
     <main class="entrar">
       <form class="cartao" (ngSubmit)="entrar()">
         <h1>🌱 AgroMinds</h1>
-        <p class="muted">Painel administrativo: usuários do bot, o que foi enviado e o tempo de cada lavoura.</p>
+        <p class="muted">Painel administrativo: usuários do bot, o que foi enviado, as plantas e o tempo de cada pessoa.</p>
         <mat-form-field appearance="outline">
           <mat-label>E-mail</mat-label>
           <input matInput type="email" name="email" [(ngModel)]="email" autocomplete="username" required />

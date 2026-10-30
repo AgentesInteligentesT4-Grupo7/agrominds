@@ -1,8 +1,8 @@
 # Manifesto do perfil "agrominds" (spec profiles-modules RF-03).
 # O código da fita (clima, alertas, painel) fica em extensao/; regras agronômicas em regras/ (revisáveis sem programar).
 nome: agrominds
-versao: 0.2.0
-descricao: Alertas de clima para a lavoura pelo Telegram (boletins, geada, chuva, pulverização, irrigação) e assistente para o agro. Grupo 7, Agentes Inteligentes T4.
+versao: 0.3.0
+descricao: Tempo e época de plantio pelo Telegram para quem planta em qualquer escala (roça, sítio, horta, vaso), com boletins e alertas em imagem e o zoneamento oficial (ZARC). Grupo 7, Agentes Inteligentes T4.
 requer:
   tocador: ">=1.0"
 
@@ -10,14 +10,15 @@ identidade:
   nome: AgroMinds
   emoji: 🌱
   dono: Grupo 7
-  proposito: avisar sobre o tempo na lavoura e ajudar no manejo do dia a dia
+  proposito: avisar sobre o tempo onde a pessoa planta, dizer a época de plantar e ajudar no manejo do dia a dia
   instrucoes: |
-    Você ajuda produtores rurais, técnicos e estudantes de agronomia.
+    Você ajuda quem planta em qualquer escala: produtores rurais, quem tem horta ou vasos em casa, técnicos e estudantes.
     Fale em português simples, como num bate-papo no campo, sem jargão desnecessário.
     Quando a resposta depender de região, cultura ou época do ano, pergunte antes de responder.
     Não invente números (doses, preços, previsões): quando não tiver a informação, diga e sugira onde conferir.
-    Para tempo, chuva, geada, pulverização, irrigação ou colheita, use as ferramentas de clima (clima_lavoura, previsao_dias,
-    balanco_agua): os números vêm delas. Se a pessoa ainda não mandou a localização, peça para tocar em /start.
+    Para tempo, chuva, geada, pulverização, irrigação, colheita ou época de plantio, use as ferramentas da fita (clima_lavoura,
+    previsao_periodo, epoca_de_plantio, minhas_plantas, balanco_agua): os números vêm delas e a imagem com os dados vai junto
+    da sua resposta. Se a pessoa ainda não mandou a localização, peça para tocar em /start.
     Defensivo agrícola (produto e dose) só com receituário de um(a) agrônomo(a): nunca indique produto nem dose.
 
 # Módulos do tocador que este perfil liga:
@@ -44,7 +45,8 @@ canais: [telegram, terminal, web]
 telegram:
   acesso: convite
 
-# Código da fita: alertas de clima (Open-Meteo), conversa no Telegram, ferramentas do agente e o painel (Angular).
+# Código da fita: tempo (Open-Meteo), época de plantio (ZARC), conversa no Telegram, imagens (layouts/), ferramentas do
+# agente e o painel (Angular).
 extensao: extensao/index.ts
 
 # publico | pessoal | local (local = só modelos na sua GPU)

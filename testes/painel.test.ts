@@ -3,26 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { Banco } from '../extensao/Banco.js';
-import { Notificador } from '../extensao/Notificador.js';
-import type { OpenMeteo } from '../extensao/OpenMeteo.js';
 import { Admins } from '../extensao/painel/Admins.js';
 import { PainelServidor } from '../extensao/painel/servidor.js';
-import { lerCulturas, lerRegras } from '../extensao/Regras.js';
-import { K7Falso, lerYaml, previsaoSintetica } from './apoio.js';
+import { montarFita, previsaoSintetica } from './apoio.js';
 
-const dir = path.resolve('regras');
-const regras = () => lerRegras(lerYaml(fs.readFileSync(path.join(dir, 'clima.yaml'), 'utf8')));
-const culturas = () => lerCulturas(lerYaml(fs.readFileSync(path.join(dir, 'culturas.yaml'), 'utf8')));
-
-describe('Painel administrativo (API)', () => {
-  const k7 = new K7Falso();
-  const api = k7.api();
-  const banco = new Banco(api.sql);
-  const meteo = { previsao: async () => previsaoSintetica(new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 13) + ':00') } as unknown as OpenMeteo;
-  const notificador = new Notificador(api, banco, meteo, regras, culturas);
+describe('Painel administrativo (API)', async () => {
+  const { k7, api, banco, contexto } = await montarFita(() => previsaoSintetica(new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 13) + ':00'));
   const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'agro-dist-'));
-  const painel = new PainelServidor({ k7: api, banco, meteo, notificador, regras, culturas, nomeDoLugar: async () => 'x' }, { porta: 0, host: '127.0.0.1', dist });
+  const painel = new PainelServidor(contexto, { porta: 0, host: '127.0.0.1', dist });
   let base = '';
   let cookie = '';
   const chamar = (rota: string, metodo = 'GET', corpo?: unknown, extra: Record<string, string> = {}) =>
@@ -42,7 +30,7 @@ describe('Painel administrativo (API)', () => {
       { userId: 60, nome: 'Beto', username: null, status: 'pendente', origem: 'pedido', criadoEm: '2026-10-30 11:00:00', ultimoContato: null },
     ];
     banco.salvarLugar('50', 'Goiânia/GO', -16.6869, -49.2648);
-    banco.salvarLavoura('50', { cultura: 'soja', fase: 'florescimento', irrigada: true });
+    banco.salvarLavoura('50', 'soja', { cultura: 'soja', fase: 'florescimento', irrigada: true });
   });
   after(() => painel.parar());
 
@@ -68,10 +56,10 @@ describe('Painel administrativo (API)', () => {
     assert.equal(r.status, 403);
   });
 
-  it('usuários (acesso + lugar + lavoura), aprovar pedido, convite com QR e boletim de teste', async () => {
-    const usuarios = (await (await chamar('/usuarios')).json()) as Array<{ userId: string; status: string; lugar: { nome: string } | null; lavoura: { cultura: string } | null }>;
+  it('usuários (acesso + lugar + plantas), aprovar pedido, convite com QR e boletim de teste', async () => {
+    const usuarios = (await (await chamar('/usuarios')).json()) as Array<{ userId: string; status: string; lugar: { nome: string } | null; plantas: Array<{ planta: string; nome: string }> }>;
     const ana = usuarios.find((u) => u.userId === '50')!;
-    assert.deepEqual([ana.status, ana.lugar?.nome, ana.lavoura?.cultura], ['ativo', 'Goiânia/GO', 'soja']);
+    assert.deepEqual([ana.status, ana.lugar?.nome, ana.plantas.map((p) => p.nome)], ['ativo', 'Goiânia/GO', ['Soja']]);
     assert.equal((await chamar('/usuarios/60', 'POST', { status: 'ativo' })).status, 200);
     assert.equal(k7.acessos.find((a) => a.userId === 60)!.status, 'ativo');
     const convite = (await (await chamar('/convites', 'POST', { nome: 'Carla' })).json()) as { link: string; qr: string };
@@ -83,14 +71,26 @@ describe('Painel administrativo (API)', () => {
     assert.match(envios[0]!.texto, /Boletim/);
   });
 
+  it('plantas: catálogo, adicionar com data de plantio, remover; imagem do layout', async () => {
+    const catalogo = (await (await chamar('/plantas')).json()) as Array<{ id: string; grupo: string; zoneada: boolean }>;
+    assert.ok(catalogo.some((p) => p.id === 'alface' && p.grupo === 'horta' && !p.zoneada));
+    assert.equal((await chamar('/usuarios/50/plantas', 'POST', { planta: 'inventada' })).status, 400);
+    assert.equal((await chamar('/usuarios/50/plantas', 'POST', { planta: 'milho', plantio: '30/10/2026' })).status, 400);
+    assert.equal((await chamar('/usuarios/50/plantas', 'POST', { planta: 'milho', plantio: '2026-10-01', irrigada: false })).status, 200);
+    assert.deepEqual(banco.lavouras('50').map((l) => [l.planta, l.plantio]), [['soja', null], ['milho', '2026-10-01']]);
+    assert.equal((await chamar('/usuarios/50/plantas', 'POST', { planta: 'milho', remover: true })).status, 200);
+    assert.deepEqual(banco.lavouras('50').map((l) => l.planta), ['soja']);
+    const img = await chamar('/usuarios/50/imagem?layout=calendario');
+    assert.equal(img.headers.get('content-type'), 'image/png');
+    assert.match(k7.htmls.at(-1)!, /Calendário de plantio/);
+  });
+
   it('séries do tempo, balanço de água e resumo com o mapa em ponto aproximado', async () => {
-    await meteo.previsao('-16.7,-49.3');
     const tempo = (await (await chamar('/usuarios/50/tempo?dias=7')).json()) as { previsao: unknown[]; lugar: { nome: string } };
     assert.equal(tempo.lugar.nome, 'Goiânia/GO');
     assert.ok(tempo.previsao.length > 100);
-    const balanco = (await (await chamar('/usuarios/50/balanco')).json()) as { kc: number; serie: unknown[] };
-    assert.equal(balanco.kc, 1.15);
-    assert.equal(balanco.serie.length, 7);
+    const balanco = (await (await chamar('/usuarios/50/balanco')).json()) as { planta: string; kc: number; serie: unknown[] };
+    assert.deepEqual([balanco.planta, balanco.kc, balanco.serie.length], ['soja', 1.15, 7]);
     const resumo = (await (await chamar('/resumo')).json()) as { usuarios: { ativos: number }; mapa: Array<{ lat: number; lon: number }> };
     assert.equal(resumo.usuarios.ativos, 2);
     assert.deepEqual([resumo.mapa[0]!.lat, resumo.mapa[0]!.lon], [-16.7, -49.3]);
@@ -102,5 +102,6 @@ describe('Painel administrativo (API)', () => {
     assert.equal((await chamar('/usuarios')).status, 200);
     assert.equal((await chamar('/usuarios/60', 'POST', { status: 'bloqueado' })).status, 403);
     assert.equal((await chamar('/convites', 'POST', {})).status, 403);
+    assert.equal((await chamar('/usuarios/50/plantas', 'POST', { planta: 'milho' })).status, 403);
   });
 });
