@@ -1,6 +1,6 @@
 # Spec: Alertas de clima para a lavoura pelo Telegram
 
-**Versão:** 0.1 (rascunho para o grupo)
+**Versão:** 0.2 (rascunho para o grupo; 0.2 acrescenta o painel administrativo em Angular)
 **Status:** Proposta, nada implementado
 **Autor:** Grupo 7 (rascunho: K7 Agent)
 **Data:** 2026-10-30
@@ -17,6 +17,10 @@ O produtor manda a **localização** no Telegram, diz **o que planta** (cultura 
 - **recomendações de manejo** ligadas ao tempo: hora boa para pulverizar, irrigar ou esperar a chuva, janela para colher;
 - **resposta na hora** quando pedir ("e o tempo amanhã?", "dá para pulverizar hoje à tarde?").
 
+Um **painel administrativo web (Angular)** controla quem pode usar o bot (convites e pedidos de acesso, sem lista de
+IDs no `.env`), mostra **tudo o que foi enviado** a cada usuário e traz **gráficos do tempo** de cada lugar (previsão,
+ocorrido, balanço hídrico, alertas), úteis também para apresentar o trabalho.
+
 Os números vêm de APIs gratuitas (Open-Meteo para o tempo; Embrapa AgroAPI para pragas, produtos registrados e
 época de plantio). As decisões agronômicas vêm de **regras escritas em YAML na fita**, que o grupo e um(a)
 agrônomo(a) podem revisar sem programar. O modelo de linguagem só **explica** o que as regras e os dados dizem, em
@@ -31,6 +35,8 @@ português simples: nunca inventa número, dose ou previsão (instrução que a 
 - G-05: custo zero no uso acadêmico (dentro dos limites gratuitos das APIs).
 - G-06: o que é genérico (receber localização, mandar mensagem sem ser resposta, tarefas agendadas) fica no
   tocador K7 para qualquer fita usar; o que é de clima e lavoura fica nesta fita.
+- G-07: liberar ou bloquear um usuário pelo painel em menos de 30 segundos, sem editar arquivo nem reiniciar o bot.
+- G-08: para qualquer usuário, ver em uma tela o que ele recebeu, por quê (regra e dado) e o tempo do lugar dele.
 
 ## 3. Non-Goals
 
@@ -38,12 +44,16 @@ português simples: nunca inventa número, dose ou previsão (instrução que a 
   profissional habilitado. O bot pode **listar produtos registrados no MAPA** para a cultura e a praga (Agrofit),
   sempre com o aviso de procurar um(a) agrônomo(a), nunca indicar qual usar nem quanto.
 - Previsão do tempo própria (usamos modelos públicos) e sensores de campo (estação, sonda de solo) nesta versão.
-- Uso comercial: o plano gratuito do Open-Meteo é não comercial (ver §9).
+- Uso comercial: o plano gratuito do Open-Meteo é não comercial (ver §10).
 - Mapa, painel web e relatórios da safra (podem vir depois).
 
 ## 4. Experiência no Telegram
 
 ### 4.1 Cadastro
+
+Só usa o bot quem foi liberado no painel (§8.2): pelo **link de convite** (`https://t.me/<bot>?start=<código>`, que já
+vincula a conta) ou por **pedido de acesso** (quem não está cadastrado manda `/start`, recebe "seu pedido foi
+enviado" e espera a aprovação). Liberado, o cadastro da lavoura segue assim:
 
 ```
 Usuário: /start
@@ -87,7 +97,7 @@ usa as ferramentas da §7 e responde com os dados.
 | **Só quando eu pedir** | Nenhuma notificação; usa `/clima` e a conversa. |
 
 "Tempo real" na prática é a checagem de hora em hora: os modelos globais que cobrem o Brasil são atualizados a cada
-1 a 6 h, então consultar mais vezes não traz dado novo (§9).
+1 a 6 h, então consultar mais vezes não traz dado novo (§10).
 
 ### 4.4 Exemplo de mensagem
 
@@ -227,7 +237,12 @@ A API de extensão (`src/fitas/FitaApi.ts`) ganha:
 | `k7.telegram.botoes(prefixo, fn)` | Botões inline (escolher cultura, fase, modo) com `callback_data` prefixado pela fita. |
 | `k7.notificar(userId, { texto, botoes? })` | Mandar mensagem **sem ser resposta** (boletim, alerta), pelo canal onde a pessoa está. |
 | `k7.tarefa(nome, intervalo, fn)` | Tarefa periódica que roda **só no processo principal** (o bot), nunca duplicada pelo chat web ou terminal. |
-| `k7.dados` (chave/valor por usuário, no SQLite do perfil) | Guardar lugares, lavouras e preferências sem a fita depender de pacote de banco. |
+| `k7.dados` (chave/valor por usuário, no SQLite do perfil) | Guardar preferências simples sem a fita depender de pacote de banco. |
+| `k7.sql` (banco SQLite próprio da fita, em `dados/<fita>/`) | Tabelas da fita (usuários, envios, séries do tempo) com o `better-sqlite3` do tocador, sem `node_modules` na fita. |
+| `k7.telegram.autorizar(fn)` | A fita decide quem pode usar o bot (cadastro do painel). Com ele, `TELEGRAM_ALLOWED_USER_IDS` não é exigido; quem não está liberado recebe a mensagem que a fita definir. |
+| `k7.telegram.aoIniciarConversa(fn)` | Recebe o `/start <código>` (link de convite) antes da recusa, para vincular a conta. |
+| `k7.processoPrincipal` | `true` só no processo do bot: a fita sobe ali o servidor do painel e as tarefas, sem duplicar no chat web ou no terminal. |
+| Registro de envios | Cada `k7.notificar` e cada resposta da fita devolvem `{ entregue, erro }` (ex.: "usuário bloqueou o bot"), para o painel mostrar a situação. |
 
 Tudo isso com testes no tocador e documentado no guia de fitas (seção 12).
 
@@ -243,8 +258,12 @@ agrominds/
 │   ├── Lugares.ts         localização → município/UF/IBGE (com cache)
 │   ├── Regras.ts          leitura dos YAML e avaliação das condições (sem eval)
 │   ├── Balanco.ts         balanço hídrico (ET0 × Kc − chuva)
-│   ├── Notificador.ts     modos de envio, horários, silêncio, sem repetição
+│   ├── Notificador.ts     modos de envio, horários, silêncio, sem repetição; grava cada envio
+│   ├── Banco.ts           tabelas e consultas (k7.sql), retenção dos dados antigos
+│   ├── Acesso.ts          usuários, convites, pedidos (k7.telegram.autorizar)
+│   ├── Painel.ts          servidor do painel: API REST /api/admin + arquivos do Angular (admin/dist)
 │   └── k7.ts              tipos da API do tocador
+├── admin/                 painel em Angular (projeto próprio: package.json, src/; o build vai para admin/dist)
 ├── regras/                clima.yaml, kc.yaml, pragas.yaml (revisáveis sem programar)
 ├── skills/clima-lavoura/  SKILL.md: como responder perguntas de tempo e manejo usando as ferramentas
 └── testes/                regras, balanço, notificador e clientes (APIs de mentira)
@@ -264,8 +283,105 @@ as regras e devolve riscos e janelas), `janela_pulverizacao`, `balanco_hidrico`,
 4. Respeita o modo do usuário (§4.3), o horário de silêncio (22h às 6h, exceto `grave`) e junta tudo numa
    mensagem só.
 5. Nos horários de boletim, monta o resumo do dia com as recomendações.
+6. Grava a previsão usada e o que foi enviado (§8.3, §8.4).
 
-## 8. Requisitos funcionais
+## 8. Painel administrativo (web, Angular)
+
+### 8.1 Onde roda e quem acessa
+
+- **Angular na versão estável mais recente** quando a implementação começar (hoje a **v22**, de junho de 2026;
+  criar com `npx @angular/cli@latest new admin`). Componentes standalone, signals, o novo controle de fluxo
+  (`@if`/`@for`), roteamento com carregamento sob demanda, **Angular Material** e idioma **pt-BR** (datas,
+  números, `LOCALE_ID`).
+- Gráficos com **ECharts** via **ngx-echarts** (a v22 é a versão para o Angular 22). Mapa com **Leaflet** e mapa
+  base do **OpenStreetMap** (gratuito, com crédito na tela).
+- O build (`admin/dist`) é servido pela extensão num servidor próprio, **só no processo do bot**
+  (`k7.processoPrincipal`): `http://127.0.0.1:8790` (`ADMIN_PORTA`). Por padrão só abre no próprio computador; para
+  apresentar de outra máquina da rede, `ADMIN_HOST=0.0.0.0` (sempre com login).
+- **Login:** e-mail e senha de administrador. O primeiro é criado com `npm run fita -- agrominds admin-criar`. A senha
+  é guardada como hash (scrypt) e a sessão vai em cookie `HttpOnly` + `SameSite=Strict`. As chamadas da API exigem o
+  cookie e o cabeçalho `X-Requested-With`. Há limite de tentativas de login.
+- **Papéis:** `admin` (tudo) e `leitura` (só vê; bom para apresentar sem risco de mudar algo).
+- Sem o build do Angular, o endereço mostra como construir: `npm --prefix admin ci && npm --prefix admin run build`.
+
+### 8.2 Usuários do bot (no lugar do `.env`)
+
+Nesta fita, quem pode usar o bot é decidido pelo cadastro do painel (`k7.telegram.autorizar`), não por
+`TELEGRAM_ALLOWED_USER_IDS`.
+
+| Jeito de entrar | Como funciona |
+|---|---|
+| **Convite** | O admin cadastra (nome, telefone ou observação). O painel gera o link `https://t.me/<bot>?start=<código>` e um **QR code**. Quem abre já fica vinculado. Código de uso único, válido por 7 dias. |
+| **Pedido de acesso** | Quem não está cadastrado manda `/start`, recebe "seu pedido foi enviado" e aparece em **Pedidos** com nome e @ do Telegram. Aprovar ou recusar avisa a pessoa no Telegram. |
+| **Manual** | Informar o ID numérico do Telegram (para quem já o conhece). |
+
+- **Situação:** pendente, ativo, pausado, bloqueado. Bloquear vale **na hora**: a próxima mensagem já é recusada,
+  e as notificações param.
+- **Ficha do usuário:** nome, @ do Telegram, desde quando, último contato, lugares (no mapa), lavouras, modo de
+  envio e horários. O admin pode corrigir lavoura e modo, e tem o botão **"Enviar boletim de teste agora"**.
+- **Excluir** apaga os dados da pessoa (o mesmo que o `/esquecer`), com confirmação.
+
+### 8.3 O que foi enviado
+
+- **Cada envio fica registrado:** data e hora, usuário, tipo (boletim, alerta, resposta ao `/clima`, conversa), regras
+  que dispararam e severidade, **texto exato enviado**, situação (entregue, falhou, usuário bloqueou o bot) e o
+  resumo dos dados usados (ex.: "mínima prevista 2,1 °C às 5h").
+- **Tela "Envios":** tabela com filtros (usuário, tipo, regra, severidade, período), busca no texto e a mensagem
+  como aparece no Telegram.
+- **Conversa livre:** por padrão o painel mostra só a quantidade de mensagens. Ver o texto exige ligar
+  `ADMIN_VER_CONVERSAS=on` e avisar os usuários no `/start` (LGPD).
+
+### 8.4 Dados do tempo e gráficos
+
+A tarefa horária grava, por célula de grade, a **previsão** (próximas 48 h, hora a hora) e o **ocorrido** (a hora que
+passou, pelo `current`/`past_days`). Assim dá para comparar o previsto com o que aconteceu.
+
+| Gráfico | O que mostra |
+|---|---|
+| **Meteograma** do lugar | Temperatura (linha), chuva (barras), chance de chuva, vento e rajadas: últimos 30 dias + próximos 7 |
+| **Umidade e VPD** | Umidade relativa e déficit de pressão de vapor, com as faixas de atenção (< 0,4 e > 1,6 kPa) |
+| **Balanço hídrico** da lavoura | ET0 × Kc acumulado, chuva, déficit e a linha do limite de irrigação, com os "irriguei" marcados |
+| **Janelas de pulverização** | Por dia, faixas de horas boas (verde) e ruins (vermelho), com o motivo ao passar o mouse |
+| **Linha do tempo de alertas** | Quando cada regra disparou, por severidade, sobre a curva de temperatura |
+| **Previsto × ocorrido** | Chuva e mínimas previstas contra as que aconteceram; acerto dos alertas de geada e chuva forte |
+
+**Painel geral (tela inicial):**
+- **Cartões:** usuários ativos, pedidos esperando, envios hoje, alertas da semana por tipo.
+- **Mapa** com os lugares, em ponto aproximado e com a cor da severidade atual.
+- **Envios por dia** e **alertas por regra**.
+
+**Para a apresentação:**
+- Cada gráfico exporta **CSV** e **PNG**.
+- O **modo apresentação** abre em tela cheia, só leitura, e passa pelos gráficos de um usuário escolhido.
+
+### 8.5 API do painel (REST, JSON, servida pela extensão)
+
+| Método e caminho | Para quê |
+|---|---|
+| `POST /api/admin/entrar` · `POST /api/admin/sair` · `GET /api/admin/eu` | Sessão |
+| `GET /api/admin/resumo` | Cartões, mapa e totais do painel geral |
+| `GET/POST/PATCH/DELETE /api/admin/usuarios[/:id]` | Lista (filtro, busca, paginação), cadastro, mudar situação/lavoura/modo, excluir |
+| `POST /api/admin/usuarios/:id/convite` | Gera link e QR code |
+| `GET /api/admin/pedidos` · `POST /api/admin/pedidos/:id/aprovar\|recusar` | Pedidos de acesso |
+| `POST /api/admin/usuarios/:id/teste` | Envia um boletim de teste |
+| `GET /api/admin/envios?usuario&tipo&regra&de&ate&q` | Registro de envios |
+| `GET /api/admin/lugares/:id/tempo?de&ate&variaveis` | Séries para os gráficos (previsto e ocorrido) |
+| `GET /api/admin/lavouras/:id/balanco?de&ate` | Série do balanço hídrico |
+| `GET /api/admin/alertas?de&ate` | Linha do tempo de alertas |
+| `GET /api/admin/exportar/:grafico.csv?...` | Exportação |
+| `GET/POST /api/admin/administradores` | Contas do painel (só `admin`) |
+
+### 8.6 Armazenamento
+
+Banco SQLite da fita (`dados/agrominds/agrominds.db`, por `k7.sql`), com estas tabelas:
+- `usuarios`, `convites`, `pedidos`, `lugares`, `lavouras`, `preferencias`;
+- `envios`, `alertas_enviados`;
+- `previsoes` (célula, hora da consulta, hora prevista, variáveis) e `ocorrido` (célula, hora, variáveis);
+- `administradores`.
+
+Retenção configurável: previsões por 90 dias, ocorrido e envios por 1 ano.
+
+## 9. Requisitos funcionais
 
 | ID | Requisito | Prioridade |
 |---|---|---|
@@ -283,8 +399,15 @@ as regras e devolve riscos e janelas), `janela_pulverizacao`, `balanco_hidrico`,
 | RF-12 | `/esquecer` apaga tudo do usuário; a coordenada nunca vai para o log nem para o modelo de linguagem. | Must |
 | RF-13 | Mensagens citam a fonte ("Dados: Open-Meteo.com", "Agrofit/MAPA via Embrapa"). | Must |
 | RF-14 | Pré-requisitos genéricos no tocador (§7.1), com testes. | Must |
+| RF-15 | Painel em Angular (última versão estável), com login, papéis `admin` e `leitura`, só em 127.0.0.1 por padrão. | Must |
+| RF-16 | Acesso ao bot pelo painel: convite (link + QR), pedido de acesso, cadastro manual; bloquear vale na hora; nada de IDs no `.env`. | Must |
+| RF-17 | Registro de cada envio (texto, tipo, regras, dados usados, situação) e a tela "Envios" com filtros. | Must |
+| RF-18 | Séries do tempo por lugar (previsto e ocorrido) e os gráficos da §8.4. | Should |
+| RF-19 | Painel geral com cartões, mapa e totais. | Should |
+| RF-20 | Exportar CSV/PNG e modo apresentação. | Could |
+| RF-21 | Ver o texto das conversas só com `ADMIN_VER_CONVERSAS=on` e aviso aos usuários. | Should |
 
-## 9. Limites, custos e privacidade
+## 10. Limites, custos e privacidade
 
 - **Open-Meteo:** com cache por célula de 0,1° e consulta horária, cada célula gasta cerca de 24 chamadas por dia,
   o que dá centenas de lugares dentro do limite de 10.000/dia. Uso **não comercial**: se o projeto virar produto, é
@@ -297,10 +420,13 @@ as regras e devolve riscos e janelas), `janela_pulverizacao`, `balanco_hidrico`,
 - **LGPD:** localização é dado pessoal. Guardar só o necessário (coordenada arredondada), não registrar no log, não
   enviar ao modelo de linguagem (ele recebe o município e os dados do tempo), apagar com `/esquecer`, e explicar
   isso no `/start`.
-- **Quem pode usar o bot:** hoje o bot do K7 atende só a lista `TELEGRAM_ALLOWED_USER_IDS`. Para abrir a
-  produtores, é preciso um modo público no canal Telegram (com limite de uso por pessoa, como já existe no chat web).
+- **Quem pode usar o bot:** decidido no painel (§8.2), não mais pela lista `TELEGRAM_ALLOWED_USER_IDS`. Mesmo
+  liberado, cada pessoa tem limite de mensagens por hora para o agente (protege as chaves dos modelos).
+- **Painel e LGPD:** o `/start` explica o que fica guardado (lugar aproximado, lavouras, mensagens enviadas pelo bot)
+  e quem vê (os administradores da fita). O painel não mostra a coordenada exata no mapa (ponto aproximado), e a
+  exportação não leva nome nem @ do Telegram, a menos que o admin marque essa opção.
 
-## 10. Edge cases
+## 11. Edge cases
 
 | Caso | Comportamento |
 |---|---|
@@ -312,30 +438,46 @@ as regras e devolve riscos e janelas), `janela_pulverizacao`, `balanco_hidrico`,
 | Usuário bloqueou o bot | Marca como inativo e para de tentar. |
 | Fuso horário | `timezone=auto` pela coordenada; horários do boletim no fuso do lugar. |
 | Token da Embrapa expirado | Renova sozinho; se as chaves faltarem, os comandos dizem que a função está desligada. |
+| Convite usado por outra pessoa | O código vale uma vez; o painel mostra quem usou e permite desfazer o vínculo. |
+| Usuário bloqueado com alertas na fila | Os envios pendentes são descartados e aparecem como "cancelado (bloqueado)". |
+| Bot e chat web rodando juntos | Painel e tarefas só no processo do bot (`k7.processoPrincipal`); o outro processo não abre a porta. |
+| Painel sem o build do Angular | A página explica como construir; a API continua funcionando. |
 
-## 11. Métricas
+## 12. Métricas
 
 - % de alertas de geada e chuva forte que se confirmaram (comparar com o dado observado do dia seguinte via
   `past_days`).
 - Notificações por usuário por dia (meta: no máximo 3 no modo boletim).
 - Usuários que pausam ou saem depois de uma semana (excesso de mensagens).
 - Chamadas por dia ao Open-Meteo e à Embrapa (longe dos limites).
+- Tempo entre o pedido de acesso e a aprovação no painel.
 
-## 12. Fases
+## 13. Fases
 
-1. **Tocador:** pré-requisitos da §7.1 (localização, comandos e botões, `notificar`, `tarefa`, `dados`).
-2. **Clima básico:** cadastro do lugar, `/clima`, boletim diário, cache do Open-Meteo.
-3. **Lavoura e alertas:** cadastro de lavouras, motor de regras e regras iniciais, modos de envio, sem repetição,
-   silêncio.
-4. **Água e pragas:** balanço hídrico, `/pragas` com Agrofit e Bioinsumos.
-5. **Extras:** `/plantio` (Agritec), avisos do INMET, conferência das previsões (métricas).
+1. **Tocador:** pré-requisitos da §7.1 (localização, comandos e botões, `notificar`, `tarefa`, `sql`, `autorizar`,
+   `processoPrincipal`).
+2. **Acesso e clima básico:**
+   - painel Angular com login, usuários, convites e pedidos (substitui o `.env`);
+   - cadastro do lugar, `/clima`, boletim diário, cache do Open-Meteo;
+   - registro de envios.
+3. **Lavoura e alertas:**
+   - cadastro de lavouras, motor de regras e regras iniciais, modos de envio, sem repetição, silêncio;
+   - tela "Envios" completa.
+4. **Gráficos:** séries previsto e ocorrido, meteograma, umidade e VPD, alertas, painel geral com mapa.
+5. **Água e pragas:** balanço hídrico (com o gráfico), `/pragas` com Agrofit e Bioinsumos.
+6. **Extras:**
+   - `/plantio` (Agritec) e avisos do INMET;
+   - previsto × ocorrido (métricas);
+   - exportação e modo apresentação.
 
-## 13. Perguntas para o grupo
+## 14. Perguntas para o grupo
 
 1. Quais culturas e região priorizar (as regras e o Kc começam por elas)?
 2. Quem do grupo (ou de fora) revisa as regras agronômicas e assina o `revisado_por`?
-3. O bot será aberto a produtores (modo público com limites) ou só para o grupo testar?
+3. O bot será aberto a produtores ou só para o grupo testar? Isso define quantos convites e o limite por pessoa.
 4. Vale pagar o Agritec, ou a época de plantio fica como demonstração?
+5. Quem são os administradores do painel e quem fica só com `leitura`?
+6. O painel roda só no computador de quem cuida do bot ou vai para um servidor (VPS) durante a apresentação?
 
 ## Referências
 
@@ -346,5 +488,7 @@ as regras e devolve riscos e janelas), `janela_pulverizacao`, `balanco_hidrico`,
 - Embrapa AgroAPI, Agritec: https://www.agroapi.cnptia.embrapa.br/portal/assets/docs/agritec.pdf
 - Embrapa AgroAPI, Bioinsumos: https://www.agroapi.cnptia.embrapa.br/portal/assets/docs/bioinsumos.pdf
 - OMM, registro das autoridades de alerta (feed CAP do INMET): https://alertingauthority.wmo.int/authorities.php?recId=22
+- Angular, versões e suporte: https://angular.dev/reference/releases
+- ngx-echarts (v22 para o Angular 22): https://www.npmjs.com/package/ngx-echarts
 - FAO-56 (evapotranspiração e coeficientes de cultura Kc): Allen et al., *Crop evapotranspiration*, FAO Irrigation
   and Drainage Paper 56, 1998.
