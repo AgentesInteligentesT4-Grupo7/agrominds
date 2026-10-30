@@ -38,6 +38,9 @@ modulos:
   voz: {}
 
 # Canais: telegram, terminal, web (chat no navegador). Bot da fita: npm run perfil -- bot agrominds --gerente
+# foco: restrito = só o propósito da fita; outro assunto recebe "isso este bot não faz", o que ele faz e exemplos.
+foco: restrito
+
 canais: [telegram, terminal, web]
 
 # Quem pode usar o bot: só convidados (QR code) e pedidos aprovados pelos donos. Convites: /convite no bot,
