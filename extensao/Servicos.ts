@@ -5,6 +5,7 @@ import type { Layouts } from './Layouts.js';
 import { legenda, mensagemBoletim, mensagemClima, tituloBoletim } from './Mensagens.js';
 import type { Notificador } from './Notificador.js';
 import type { OpenMeteo, Previsao } from './OpenMeteo.js';
+import type { Radar } from './Radar.js';
 import { type LinhaCalendario, type Planta, calendario, lavourasAtuais, municipioDoLugar, nomeDaPlanta, resumoPlantas, sugestoes, textoCalendario } from './Plantas.js';
 import { type Cultura, type Regra, type Resultado, avaliarTodas } from './Regras.js';
 import { type OpcaoPeriodo, dadosCalendario, dadosPlantas, dadosPrevisao, dadosTempo, periodoDe, textoPrevisao } from './Visual.js';
@@ -15,6 +16,8 @@ export interface Contexto {
   k7: FitaApi;
   banco: Banco;
   meteo: OpenMeteo;
+  /** Radar de chuva (RainViewer); undefined com AGRO_RADAR=off. */
+  radar?: Radar;
   zarc: Zarc;
   layouts: Layouts;
   regras: () => Regra[];

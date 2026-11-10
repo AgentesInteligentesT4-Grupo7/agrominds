@@ -11,6 +11,7 @@ import type { FitaApi } from './k7.js';
 import { Layouts } from './Layouts.js';
 import { Notificador } from './Notificador.js';
 import { OpenMeteo } from './OpenMeteo.js';
+import { Radar } from './Radar.js';
 import { Admins } from './painel/Admins.js';
 import { iniciarPainel } from './painel/servidor.js';
 import { type Planta, culturasDoZarc, lerPlantas } from './Plantas.js';
@@ -24,6 +25,7 @@ import { Zarc } from './Zarc.js';
  * Extensão da AgroMinds: tempo e época de plantio pelo Telegram, para quem planta em qualquer escala
  * (spec specs/alertas-clima.md).
  * - Tempo: Open-Meteo (gratuito, sem chave; OPENMETEO_URL troca o endereço).
+ * - Chuva agora: radar da RainViewer (gratuito, sem chave, uso pessoal e educativo; AGRO_RADAR=off desliga).
  * - Época de plantio: ZARC (MAPA/Embrapa), baixado do portal de dados abertos uma vez por safra.
  * - Regras e plantas: regras/*.yaml (revisáveis sem programar; relidas quando mudam).
  * - Imagens: layouts/*.html, com os dados dentro, viram "print" (k7.util.htmlParaPng).
@@ -48,6 +50,7 @@ export default async function ativar(k7: FitaApi): Promise<void> {
   const geocodificar = env.AGRO_GEOCODIFICAR !== 'off';
   const base: Base = {
     k7, banco, meteo, zarc, layouts: new Layouts(k7), regras, culturas, plantas,
+    ...(env.AGRO_RADAR !== 'off' ? { radar: new Radar() } : {}),
     nomeDoLugar: (lat, lon) => nomeDoLugar(lat, lon, geocodificar),
     buscarLugar: (texto) => buscarLugar(texto, geocodificar),
   };

@@ -4,7 +4,7 @@ import { type Previsao, horaLocal, somarHoras } from './OpenMeteo.js';
  * Chuva hora a hora (Open-Meteo): junta as horas seguidas com chuva prevista em janelas ("das 15h às 18h"). No
  * Open-Meteo, `precipitation` e `precipitation_probability` de uma hora valem para a hora ANTERIOR (o valor das 16h é
  * a chuva entre 15h e 16h); por isso a janela começa uma hora antes do primeiro valor. É previsão de modelo: a hora
- * pode adiantar ou atrasar; o minuto exato só um radar, olhando a chuva chegar.
+ * pode adiantar ou atrasar; para a próxima hora, o radar (Radar.ts) mostra a chuva chegando.
  */
 export interface JanelaDeChuva {
   /** "2026-11-09T15:00" (local): começo e fim da janela. */
@@ -89,7 +89,7 @@ export function textoChuvaPorHora(p: Previsao, lugar: string, agora: Date, horas
     linhas.push(`• ${dia}: das ${hora(j.inicio)} às ${hora(j.fim)} — ${chance(j.probabilidade)}, ~${mm(j.mm)} mm (${j.intensidade})${pico}`);
   }
   linhas.push(
-    'É previsão de modelo, hora a hora: o começo pode adiantar ou atrasar 1 a 2 h. Para o minuto exato, acompanhe um radar (INMET, Windy) quando a chuva estiver perto.',
+    'É previsão de modelo, hora a hora: o começo pode adiantar ou atrasar 1 a 2 h. Quando a chuva estiver perto, o radar mostra se ela está chegando.',
   );
   if (p.desatualizada) linhas.push('(Última previsão guardada: o serviço não respondeu agora.)');
   return linhas.join('\n');

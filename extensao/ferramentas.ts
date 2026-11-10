@@ -2,6 +2,7 @@ import { UserFacingError } from './erros.js';
 import type { ModoEnvio } from './Banco.js';
 import type { FitaTool, FitaToolCtx, TelegramResposta } from './k7.js';
 import { textoChuvaPorHora } from './Chuva.js';
+import { textoRadar } from './Radar.js';
 import { aguaDaSemana, balancoHidrico } from './Regras.js';
 import { somarDias } from './Plantas.js';
 import { type Contexto, acharLugar, calendarioDe, hojeLocal, lugarOuErro, minhasPlantas, peloTelegram, plantasDe, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
@@ -67,19 +68,35 @@ export function registrarFerramentas(c: Contexto): void {
   k7.ferramenta({
     name: 'chuva_por_hora',
     description:
-      'A que horas deve chover nas próximas horas (previsão hora a hora): janelas como "hoje das 15h às 18h", com chance, milímetros e a hora mais forte. ' +
-      'Use para "que horas vai chover?", "vai chover hoje à tarde?", "dá para pulverizar de manhã?".',
+      'A que horas deve chover (previsão hora a hora, até 7 dias): janelas como "hoje das 15h às 18h", com chance, milímetros e a hora mais forte. ' +
+      'Use para "que horas vai chover?", "vai chover hoje à tarde?", "dá para pulverizar de manhã?" e, com horas: 168, "que horas chove nesta semana?".',
     parameters: {
       type: 'object',
-      properties: { horas: { type: 'integer', description: 'Quantas horas à frente, de 6 a 72 (padrão 48)' }, lugar: LUGAR },
+      properties: { horas: { type: 'integer', description: 'Quantas horas à frente, de 6 a 168 (padrão 48; a semana = 168)' }, lugar: LUGAR },
       additionalProperties: false,
     },
     async run(args, ctx) {
       const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
-      const horas = typeof args.horas === 'number' ? Math.min(72, Math.max(6, Math.round(args.horas))) : 48;
+      const horas = typeof args.horas === 'number' ? Math.min(168, Math.max(6, Math.round(args.horas))) : 48;
       return textoChuvaPorHora(await c.meteo.previsao(lugar.celula), lugar.nome, new Date(), horas);
     },
   });
+
+  if (c.radar) {
+    const radar = c.radar;
+    k7.ferramenta({
+      name: 'radar_chuva',
+      description:
+        'Chuva AGORA pelo radar meteorológico (imagem de poucos minutos atrás): se está chovendo no lugar, a que distância e em que direção está ' +
+        'a chuva mais perto, para onde ela anda e, se vier para o lugar, a que horas chega (até 3 h). Use para "está chovendo aí?", ' +
+        '"a chuva está vindo?", "chove na próxima hora?", "dá tempo de colher antes da chuva?". Para mais de 3 h ou outros dias, use chuva_por_hora.',
+      parameters: { type: 'object', properties: { lugar: LUGAR }, additionalProperties: false },
+      async run(args, ctx) {
+        const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
+        return textoRadar(await radar.doLugar(lugar.lat, lugar.lon), lugar.nome, new Date());
+      },
+    });
+  }
 
   k7.ferramenta({
     name: 'epoca_de_plantio',

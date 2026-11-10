@@ -45,9 +45,24 @@
     aviso('Pegando a localização do navegador…');
     navigator.geolocation.getCurrentPosition(
       function (p) { enviar(ROTA, { lat: p.coords.latitude, lon: p.coords.longitude, apelido: apelido() }, '📍 Onde estou agora' + (apelido() ? ' (' + apelido() + ')' : '')); },
-      function () { aviso('Não consegui a localização (permissão negada ou indisponível). Busque a cidade ou cole a coordenada.'); },
+      function (erro) { aviso(motivoSemLocalizacao(erro)); },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 },
     );
+  }
+
+  /**
+   * Por que o navegador não deu a posição. Permissão negada também acontece com o site liberado quando a localização
+   * do sistema está desligada (Windows: Configurações → Privacidade e segurança → Localização).
+   */
+  function motivoSemLocalizacao(erro) {
+    var fim = ' Ou busque a cidade ou cole a coordenada aqui embaixo.';
+    if (erro && erro.code === 1) {
+      return 'O navegador recusou a localização. Libere no cadeado ao lado do endereço e confira se a localização do ' +
+        'aparelho está ligada (no Windows: Configurações → Privacidade e segurança → Localização, com o acesso dos ' +
+        'aplicativos da área de trabalho ligado; no celular: GPS ligado).' + fim;
+    }
+    if (erro && erro.code === 3) return 'A localização demorou demais para chegar. Tente de novo em instantes.' + fim;
+    return 'O aparelho não conseguiu descobrir onde está (sem GPS, Wi-Fi ou localização do sistema desligada).' + fim;
   }
 
   function buscar() {
