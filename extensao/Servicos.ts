@@ -29,9 +29,20 @@ export interface Contexto {
 
 export type Base = Omit<Contexto, 'notificador'>;
 
-const SEM_LUGAR =
-  'Primeiro preciso saber onde fica a sua plantação (não precisa ser onde você está). No Telegram: /start e o botão ' +
-  '"📍 Enviar localização" (no 📎 → Localização dá para arrastar o mapa). No chat web: o botão 📍 ao lado da caixa de mensagem.';
+/** Quem fala pelo Telegram tem userId numérico; o chat web, "web" ou "web-<visitante>". */
+export function peloTelegram(userId: string | undefined): boolean {
+  return Boolean(userId && /^\d+$/.test(userId));
+}
+
+/** Como mandar a localização, só do canal em que a pessoa está (no chat web, nada de Telegram). */
+export function comoMandarLugar(userId: string | undefined): string {
+  return peloTelegram(userId)
+    ? 'Toque em /start e no botão "📍 Enviar localização" (no 📎 → Localização dá para arrastar o mapa até o ponto certo).'
+    : 'Toque no botão 📍 ao lado da caixa de mensagem: dá para usar onde você está ou procurar a cidade ou o endereço da plantação.';
+}
+
+const semLugar = (userId: string | undefined) =>
+  `Primeiro preciso saber onde fica a sua plantação (não precisa ser onde você está). ${comoMandarLugar(userId)}`;
 
 /** Data local de hoje (AAAA-MM-DD) no fuso de Brasília (para o calendário, que não depende da previsão). */
 export function hojeLocal(agora = new Date()): string {
@@ -41,7 +52,7 @@ export function hojeLocal(agora = new Date()): string {
 /** O lugar pedido (`lugarId`) ou o atual da pessoa; sem nenhum, erro com o jeito de cadastrar. */
 export function lugarOuErro(c: Base, userId: string | undefined, lugarId?: number): Lugar {
   const lugar = !userId ? undefined : lugarId !== undefined ? c.banco.lugarPorId(userId, lugarId) : c.banco.lugar(userId);
-  if (!lugar) throw new UserFacingError(SEM_LUGAR);
+  if (!lugar) throw new UserFacingError(semLugar(userId));
   return lugar;
 }
 

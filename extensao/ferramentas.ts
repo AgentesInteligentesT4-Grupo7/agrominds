@@ -1,8 +1,10 @@
 import { UserFacingError } from './erros.js';
-import type { FitaToolCtx, TelegramResposta } from './k7.js';
+import type { ModoEnvio } from './Banco.js';
+import type { FitaTool, FitaToolCtx, TelegramResposta } from './k7.js';
+import { textoChuvaPorHora } from './Chuva.js';
 import { aguaDaSemana, balancoHidrico } from './Regras.js';
 import { somarDias } from './Plantas.js';
-import { type Contexto, acharLugar, calendarioDe, hojeLocal, lugarOuErro, minhasPlantas, plantasDe, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
+import { type Contexto, acharLugar, calendarioDe, hojeLocal, lugarOuErro, minhasPlantas, peloTelegram, plantasDe, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
 import { PERIODOS, ehPeriodo } from './Visual.js';
 
 /** A imagem (layout) vai junto da resposta; o agente recebe o texto com os números. */
@@ -59,6 +61,23 @@ export function registrarFerramentas(c: Contexto): void {
       const s = await previsaoDoPeriodo(c, ctx.userId!, periodo, new Date(), lugarId);
       anexar(ctx, s.mensagem);
       return s.texto + (typeof s.mensagem === 'string' ? '' : IMAGEM);
+    },
+  });
+
+  k7.ferramenta({
+    name: 'chuva_por_hora',
+    description:
+      'A que horas deve chover nas próximas horas (previsão hora a hora): janelas como "hoje das 15h às 18h", com chance, milímetros e a hora mais forte. ' +
+      'Use para "que horas vai chover?", "vai chover hoje à tarde?", "dá para pulverizar de manhã?".',
+    parameters: {
+      type: 'object',
+      properties: { horas: { type: 'integer', description: 'Quantas horas à frente, de 6 a 72 (padrão 48)' }, lugar: LUGAR },
+      additionalProperties: false,
+    },
+    async run(args, ctx) {
+      const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
+      const horas = typeof args.horas === 'number' ? Math.min(72, Math.max(6, Math.round(args.horas))) : 48;
+      return textoChuvaPorHora(await c.meteo.previsao(lugar.celula), lugar.nome, new Date(), horas);
     },
   });
 
@@ -171,6 +190,8 @@ export function registrarFerramentas(c: Contexto): void {
     },
   });
 
+  k7.ferramenta(avisosAutomaticos(c));
+
   k7.ferramenta({
     name: 'meus_lugares',
     description: 'Os lugares da pessoa (fazenda, sítio, horta de casa) e quantas plantas tem em cada; qual está em uso. Use quando ela perguntar dos lugares ou citar um que você não conhece.',
@@ -179,8 +200,83 @@ export function registrarFerramentas(c: Contexto): void {
       lugarOuErro(c, ctx.userId);
       return [
         ...banco.lugaresDe(ctx.userId!).map((l) => `${l.atual ? '● (em uso) ' : ''}${l.nome}: ${banco.lavouras(ctx.userId!, l.id).length} planta(s)`),
-        'Para acrescentar: no Telegram, mande outra localização (dá para arrastar o mapa); no chat web, o botão 📍. Trocar ou remover: /lugares.',
+        peloTelegram(ctx.userId)
+          ? 'Para acrescentar: mande outra localização (dá para arrastar o mapa). Trocar ou remover: /lugares.'
+          : 'Para acrescentar, trocar ou remover: o botão 📍 ao lado da caixa de mensagem.',
       ].join('\n');
     },
   });
+}
+
+const MODOS_AVISO: Record<ModoEnvio, string> = {
+  boletim: 'boletim nos horários e alerta grave na hora',
+  hora: 'boletim nos horários e todo alerta novo, de hora em hora',
+  alertas: 'só os alertas, sem boletim',
+  pedir: 'nada automático, só quando a pessoa pedir',
+};
+
+const horas = (lista: number[]) => lista.map((h) => `${h}h`).join(', ').replace(/, ([^,]*)$/, ' e $1');
+
+/**
+ * avisos_automaticos: a pessoa pede pela conversa ("me mande o tempo todo dia de manhã", "pare de mandar") e o
+ * agente liga, ajusta, pausa ou mostra o boletim automático. Mensagem sem ser resposta só existe no Telegram: no chat
+ * web a ferramenta explica onde receber.
+ */
+export function avisosAutomaticos(c: Contexto): FitaTool {
+  return {
+    name: 'avisos_automaticos',
+    description:
+      'Liga, ajusta, pausa ou mostra o boletim automático do tempo (mensagem que a fita manda sozinha todo dia nos horários escolhidos, ' +
+      'mais os alertas de risco). Use quando a pessoa pedir para receber o tempo diariamente, mudar o horário, parar ou voltar a receber.',
+    parameters: {
+      type: 'object',
+      properties: {
+        acao: { type: 'string', enum: ['ver', 'ligar', 'pausar', 'voltar'], description: 'ver (como está), ligar (ou ajustar), pausar, voltar (depois de pausar).' },
+        horarios: {
+          type: 'array',
+          items: { type: 'integer' },
+          description: 'Horas do boletim, de 0 a 23, na hora do lugar (ex.: [6] "de manhã cedo", [6, 18] "manhã e fim de tarde"). Sem pedido de horário, não passe: fica como está.',
+        },
+        modo: {
+          type: 'string',
+          enum: ['boletim', 'hora', 'alertas', 'pedir'],
+          description: 'boletim (padrão: boletim nos horários e alerta grave na hora), hora (também todo alerta novo), alertas (só alertas), pedir (nada automático).',
+        },
+      },
+      required: ['acao'],
+      additionalProperties: false,
+    },
+
+    async run(args, ctx) {
+      if (!peloTelegram(ctx.userId)) {
+        return (
+          'Aqui no chat do navegador eu só respondo quando a pessoa escreve: não consigo mandar mensagem sozinho. ' +
+          'Para receber o boletim todo dia, é pelo Telegram: o botão ✈️ no alto da página abre a conversa com o bot ' +
+          '(lá ela manda a localização da plantação uma vez e escolhe os horários). Explique isso em poucas frases.'
+        );
+      }
+      const banco = c.banco;
+      const lugar = lugarOuErro(c, ctx.userId);
+      const userId = ctx.userId!;
+      const acao = String(args.acao ?? 'ver');
+      if (acao === 'pausar') banco.salvarPreferencias(userId, { pausado: true });
+      else if (acao === 'voltar') banco.salvarPreferencias(userId, { pausado: false });
+      else if (acao === 'ligar') {
+        const pedidas = Array.isArray(args.horarios) ? args.horarios.map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23) : [];
+        const lista = [...new Set(pedidas)].sort((a, b) => a - b).slice(0, 4);
+        if (Array.isArray(args.horarios) && args.horarios.length && !lista.length) throw new UserFacingError('Horário inválido: use horas de 0 a 23.');
+        const atual = banco.preferencias(userId);
+        const modo = typeof args.modo === 'string' && args.modo in MODOS_AVISO ? (args.modo as ModoEnvio) : atual.modo === 'pedir' ? 'boletim' : atual.modo;
+        banco.salvarPreferencias(userId, { modo, pausado: false, ...(lista.length ? { horarios: lista } : {}) });
+      }
+      const p = banco.preferencias(userId);
+      const comBoletim = p.modo === 'boletim' || p.modo === 'hora';
+      return [
+        `ok: ${p.pausado ? 'PAUSADO (nada é enviado até a pessoa pedir para voltar)' : MODOS_AVISO[p.modo]}` +
+          `${comBoletim && !p.pausado ? `, todo dia às ${horas(p.horarios)} (hora de ${lugar.nome})` : ''}.`,
+        'Entre 22h e 6h só vão alertas graves. Para mudar pelos botões: /alertas; parar: /pausar.',
+        'Confirme em uma frase o que ficou valendo.',
+      ].join('\n');
+    },
+  };
 }

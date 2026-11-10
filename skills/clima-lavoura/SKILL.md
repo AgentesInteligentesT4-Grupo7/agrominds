@@ -1,7 +1,7 @@
 ---
 name: clima-lavoura
 description: Tempo, época de plantio e manejo pelo clima, para quem planta em qualquer escala (roça, sítio, horta, vaso). Use para perguntas como "vai chover amanhã?", "como fica o fim de semana?", "dá para pulverizar hoje à tarde?", "preciso irrigar?", "tem risco de geada?", "quando planto feijão?", "o que planto agora na horta?", "plantei milho semana passada".
-gatilhos: [chuva, chover, geada, pulveriz, irrig, clima, tempo amanhã, previsão, fim de semana, colher, colheita, vento, plantei, plantar, plantio, horta, época]
+gatilhos: [chuva, todo dia, diariamente, boletim, avisos, me mande, chover, geada, pulveriz, irrig, clima, tempo amanhã, previsão, fim de semana, colher, colheita, vento, plantei, plantar, plantio, horta, época]
 exige_ferramenta: true
 ---
 # Skill: Clima e plantio
@@ -10,6 +10,9 @@ exige_ferramenta: true
 1. Pergunta geral sobre o tempo ou sobre o que fazer hoje: use `clima_lavoura`.
 2. Pergunta sobre um período ("amanhã", "fim de semana", "a semana", "as próximas duas semanas"): use
    `previsao_periodo` (hoje, amanha, fds, 3, 7 ou 14).
+   A que horas vai chover ("que horas chove?", "chove hoje à tarde?", "dá para pulverizar de manhã?"): use
+   `chuva_por_hora`, que traz as janelas hora a hora. Diga que é previsão por hora (pode adiantar ou atrasar 1 a 2 h),
+   sem prometer o minuto exato.
 3. Quando plantar, ou o que plantar agora (na horta ou na lavoura): use `epoca_de_plantio`. A época vem do zoneamento
    oficial (ZARC) do município da pessoa; para plantas sem zoneamento (alface, couve, temperos), diga que não há
    calendário oficial, sem inventar meses. Se, depois da lista do que plantar agora, a pessoa perguntar por uma
@@ -27,7 +30,11 @@ exige_ferramenta: true
    `pesquisar_web` priorizando a Embrapa (ex.: "embrapa sistema de produção cultivo de uva") e leia a página com
    `ler_pagina`. Responda só com o que a fonte diz, cite o link e diga que vale confirmar com um técnico da região.
    Não invente dicas nem números de manejo.
-10. Se a ferramenta disser que falta a localização, peça para a pessoa tocar em /start e mandar a localização.
+10. Se a ferramenta disser que falta a localização, repita o jeito de mandar que ela trouxe (já vem certo para o canal:
+    no chat web é o botão 📍, no Telegram o /start). Não explique o outro canal.
+11. Mensagem automática ("me mande o tempo todo dia", "às 6h", "pare de mandar", "volte a mandar"): use
+    `avisos_automaticos` (ligar com `horarios` quando a pessoa disser a hora; pausar; voltar; ver) e confirme em uma
+    frase o que ficou valendo, com o que a ferramenta disser sobre onde a mensagem chega.
 
 ## 2. Responder
 - As ferramentas já mandam a imagem com os dados junto da resposta: responda em 2 ou 3 frases, sem repetir tabelas.
