@@ -1,4 +1,5 @@
 import type { ModoEnvio } from './Banco.js';
+import { diaDe, textoCaderno } from './Caderno.js';
 import type { TelegramBotao, TelegramCtx, TelegramResposta } from './k7.js';
 import { GRUPOS, type Planta, somarDias } from './Plantas.js';
 import { type Contexto, calendarioDe, hojeLocal, minhasPlantas, nomesPedidos, previsaoDoPeriodo, tempoAgora } from './Servicos.js';
@@ -341,7 +342,38 @@ export function registrarTelegram(c: Contexto): void {
   });
   k7.telegram.comando('irriguei', 'Avisar que irrigou (zera a conta de água)', async (ctx) => {
     banco.irrigou(ctx.userId);
+    const lugar = banco.lugar(ctx.userId);
+    if (lugar) banco.anotar({ userId: ctx.userId, lugarId: lugar.id, dia: hojeLocal(), tipo: 'irrigacao', texto: 'irriguei', planta: null, quantidade: null, unidade: null });
     await ctx.responder('💧 Anotado: a conta de água das plantas irrigadas recomeça a partir de hoje.');
+  });
+  k7.telegram.comando('choveu', 'Chuva do pluviômetro: /choveu 18 (ou /choveu 18 ontem)', async (ctx) => {
+    const lugar = banco.lugar(ctx.userId);
+    if (!lugar) return ctx.responder('Primeiro mande a localização da plantação (/start).');
+    const m = /^(\d+(?:[.,]\d+)?)\s*(?:mm)?\s*(.*)$/i.exec(ctx.args);
+    if (!m) return ctx.responder('Diga quantos milímetros marcou o pluviômetro: /choveu 18 (hoje) ou /choveu 18 ontem.');
+    const mm = Number(m[1]!.replace(',', '.'));
+    const dia = diaDe(m[2]!.trim() || 'hoje', hojeLocal());
+    if (!dia || mm > 400) return ctx.responder('Não entendi. Exemplos: /choveu 18 · /choveu 7,5 ontem · /choveu 30 08/11');
+    banco.registrarChuva(ctx.userId, lugar.id, dia, mm);
+    banco.anotar({ userId: ctx.userId, lugarId: lugar.id, dia, tipo: 'chuva', texto: 'pluviômetro', planta: null, quantidade: mm, unidade: 'mm' });
+    await ctx.responder(`🌧️ Anotado: ${String(mm).replace('.', ',')} mm em ${dia.slice(8, 10)}/${dia.slice(5, 7)} (${lugar.nome}). A conta de água passa a usar a sua medida nesse dia.`);
+  });
+  k7.telegram.comando('caderno', 'Caderno de campo: o que você anotou nos últimos 30 dias', async (ctx) => {
+    const lugar = banco.lugar(ctx.userId);
+    if (!lugar) return ctx.responder('Primeiro mande a localização da plantação (/start).');
+    const anotacoes = banco.caderno(ctx.userId, { lugarId: lugar.id, desde: somarDias(hojeLocal(), -30), limite: 500 });
+    const texto = textoCaderno(anotacoes, lugar.nome, 30, (id) => planta(id)?.nome ?? id);
+    await ctx.responder(anotacoes.length ? texto : `${texto}\n\nPara anotar, é só contar na conversa (pode ser por áudio): "apliquei fungicida no milho hoje", "colhi 40 caixas de tomate".`);
+  });
+  k7.telegram.comando('audio', 'Boletim e alertas também em áudio (liga ou desliga)', async (ctx) => {
+    const ligado = !banco.preferencias(ctx.userId).audio;
+    banco.salvarPreferencias(ctx.userId, { audio: ligado });
+    await ctx.responder(ligado ? '🔊 Pronto: o boletim e os alertas vão chegar também em áudio. Para desligar, /audio de novo.' : '🔇 Áudio desligado: o boletim e os alertas vão só em imagem e texto.');
+  });
+  k7.telegram.comando('ouvir', 'Ouvir o tempo agora (boletim em áudio)', async (ctx) => {
+    if (!banco.lugar(ctx.userId)) return ctx.responder('Primeiro mande a localização da plantação (/start).');
+    const r = await c.notificador.boletimAgora(ctx.userId, 'boletim', { audio: true });
+    if (!r.entregue) await ctx.responder('Não consegui mandar o boletim agora. Tente de novo daqui a pouco.');
   });
   k7.telegram.comando('esquecer', 'Apagar meu lugar, minhas plantas e minhas mensagens', (ctx) =>
     ctx.responder({ texto: 'Apagar seu lugar, suas plantas, suas preferências e as mensagens que mandei?', botoes: [[{ texto: '🗑️ Apagar', dados: 'agro:esquecer:sim' }, { texto: 'Cancelar', dados: 'agro:esquecer:nao' }]] }),

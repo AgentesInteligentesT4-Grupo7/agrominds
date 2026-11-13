@@ -15,7 +15,7 @@ interface Condicao {
 
 export interface Regra {
   id: string;
-  tipo?: 'alerta' | 'janela' | 'balanco';
+  tipo?: 'alerta' | 'janela' | 'balanco' | 'radar';
   titulo: string;
   culturas?: string[] | 'todas';
   fases?: string[] | 'todas';
@@ -39,6 +39,10 @@ export interface Regra {
   mensagem_irrigar?: string;
   mensagem_esperar?: string;
   mensagem_ok?: string;
+  // radar (aviso automático de chuva chegando; o motor de regras ignora, quem usa é o Notificador)
+  minutos?: number;
+  dbz_minimo?: number;
+  grave_dbz?: number;
   fonte?: string;
   revisado_por?: string | null;
 }
@@ -80,12 +84,20 @@ const PESO_SEV: Record<Severidade, number> = { info: 0, atencao: 1, grave: 2 };
  * as plantas: geada é grave para quem está florindo); os de cultura ou fase dizem a que plantas se referem, e o
  * mesmo aviso para várias plantas vira um só ("Soja e milho · ...").
  */
-export function avaliarTodas(regras: Regra[], p: Previsao, lavouras: Lavoura[], culturas: Cultura[], nomes: (l: Lavoura) => string, agora = new Date()): Resultado[] {
+export function avaliarTodas(
+  regras: Regra[],
+  p: Previsao,
+  lavouras: Lavoura[],
+  culturas: Cultura[],
+  nomes: (l: Lavoura) => string,
+  agora = new Date(),
+  chuvaMedida: (lugarId: number) => Record<string, number> = () => ({}),
+): Resultado[] {
   if (!lavouras.length) return avaliarRegras(regras, p, undefined, culturas, agora);
   const gerais = new Map<string, Resultado>();
   const especificos = new Map<string, { r: Resultado; lavouras: Lavoura[] }>();
   for (const l of lavouras) {
-    for (const r of avaliarRegras(regras, p, l, culturas, agora)) {
+    for (const r of avaliarRegras(regras, p, l, culturas, agora, chuvaMedida(l.lugarId))) {
       const regra = regras.find((x) => x.id === r.regra);
       if (regra && geral(regra)) {
         const atual = gerais.get(r.regra);
@@ -217,15 +229,16 @@ function aplica(lista: string[] | 'todas' | undefined, valor: string): boolean {
   return !lista || lista === 'todas' || lista.includes(valor);
 }
 
-function formatar(texto: string, vars: Record<string, string | number>): string {
+export function formatar(texto: string, vars: Record<string, string | number>): string {
   return texto.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]).replace('.', ',') : m));
 }
 
 /**
  * Avalia todas as regras para uma lavoura (ou só as gerais, sem lavoura cadastrada) com a previsão do lugar.
- * Regra sem `revisado_por` sai marcada "(regra em revisão)".
+ * Regra sem `revisado_por` sai marcada "(regra em revisão)". `chuvaMedida`: o pluviômetro da pessoa ({ dia: mm }),
+ * que vale no lugar da estimativa do modelo no balanço de água.
  */
-export function avaliarRegras(regras: Regra[], p: Previsao, lavoura: Lavoura | undefined, culturas: Cultura[], agora = new Date()): Resultado[] {
+export function avaliarRegras(regras: Regra[], p: Previsao, lavoura: Lavoura | undefined, culturas: Cultura[], agora = new Date(), chuvaMedida: Record<string, number> = {}): Resultado[] {
   const s = serie(p);
   const agoraLocal = horaLocal(agora, p.utcOffsetSeconds);
   const hoje = agoraLocal.slice(0, 10);
@@ -278,38 +291,45 @@ export function avaliarRegras(regras: Regra[], p: Previsao, lavoura: Lavoura | u
       if (!lavoura || (r.apenas_irrigadas && !lavoura.irrigada)) continue;
       const kc = cultura?.fases[lavoura.fase]?.kc ?? 1;
       if (kc <= 0) continue;
-      const b = balancoHidrico(p, kc, r.dias ?? 7, r.chuva_prevista_dias ?? 2, lavoura.irrigouEm, agora);
+      const b = balancoHidrico(p, kc, r.dias ?? 7, r.chuva_prevista_dias ?? 2, lavoura.irrigouEm, agora, chuvaMedida);
       const limite = r.limite_mm ?? 25;
       const vars = { deficit: Math.round(b.deficit), chuva_prevista: Math.round(b.chuvaPrevista), dias: r.dias ?? 7 };
       const msg = b.deficit < limite ? r.mensagem_ok : b.chuvaPrevista >= b.deficit * 0.8 ? r.mensagem_esperar : r.mensagem_irrigar;
-      out.push({ regra: r.id, titulo: r.titulo, severidade: 'info', alerta: false, dia: hoje, texto: formatar(msg ?? r.titulo, vars) + revisao });
+      const medida = b.medidos ? ` (com a chuva do seu pluviômetro em ${b.medidos} ${b.medidos === 1 ? 'dia' : 'dias'})` : '';
+      out.push({ regra: r.id, titulo: r.titulo, severidade: 'info', alerta: false, dia: hoje, texto: formatar(msg ?? r.titulo, vars) + medida + revisao });
     }
   }
   return out;
 }
 
 /**
- * Balanço de água dos últimos dias: Σ(ET0 × Kc) − chuva (diário do Open-Meteo), contado desde a última irrigação
- * informada, e a chuva prevista nos próximos dias.
+ * Balanço de água dos últimos dias: Σ(ET0 × Kc) − chuva, contado desde a última irrigação informada, e a chuva
+ * prevista nos próximos dias. A chuva de cada dia é a do pluviômetro da pessoa (`medida`, { dia: mm }) quando ela
+ * informou; senão, a estimativa diária do Open-Meteo. `medidos`: quantos dias usaram o pluviômetro.
  */
-export function balancoHidrico(p: Previsao, kc: number, dias: number, diasPrevistos: number, irrigouEm: string | null, agora = new Date()) {
+export function balancoHidrico(p: Previsao, kc: number, dias: number, diasPrevistos: number, irrigouEm: string | null, agora = new Date(), medida: Record<string, number> = {}) {
   const hoje = horaLocal(agora, p.utcOffsetSeconds).slice(0, 10);
   const time = p.dias.time;
   const et0 = p.dias.et0_fao_evapotranspiration as Array<number | null>;
   const chuva = p.dias.precipitation_sum as Array<number | null>;
   const desde = irrigouEm ? irrigouEm.slice(0, 10) : '';
   let deficit = 0;
-  const serie: Array<{ dia: string; et: number; chuva: number; deficit: number }> = [];
+  let medidos = 0;
+  const serie: Array<{ dia: string; et: number; chuva: number; deficit: number; medida: boolean }> = [];
   time.forEach((dia, i) => {
     if (dia >= hoje || dia < somarHoras(`${hoje}T12:00`, -24 * dias).slice(0, 10)) return;
     if (desde && dia <= desde) deficit = 0;
     const et = (et0[i] ?? 0) * kc;
-    const c = chuva[i] ?? 0;
+    const doPluviometro = typeof medida[dia] === 'number';
+    const c = doPluviometro ? medida[dia]! : (chuva[i] ?? 0);
     deficit = Math.max(0, deficit + et - c);
-    if (!(desde && dia <= desde)) serie.push({ dia, et: round(et, 1), chuva: round(c, 1), deficit: round(deficit, 1) });
+    if (!(desde && dia <= desde)) {
+      if (doPluviometro) medidos++;
+      serie.push({ dia, et: round(et, 1), chuva: round(c, 1), deficit: round(deficit, 1), medida: doPluviometro });
+    }
   });
   const chuvaPrevista = time.reduce((total, dia, i) => (dia >= hoje && dia < somarHoras(`${hoje}T12:00`, 24 * diasPrevistos).slice(0, 10) ? total + (chuva[i] ?? 0) : total), 0);
-  return { deficit: round(deficit, 1), chuvaPrevista: round(chuvaPrevista, 1), serie };
+  return { deficit: round(deficit, 1), chuvaPrevista: round(chuvaPrevista, 1), serie, medidos };
 }
 
 /**

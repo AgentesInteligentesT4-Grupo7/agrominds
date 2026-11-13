@@ -121,7 +121,7 @@ A fita foi feita para ser adaptada: limites dos alertas, plantas, textos e image
 | Quero mudar | Onde | Some ao atualizar? |
 |---|---|---|
 | Bot, donos, ligar ou desligar recursos | `.env` da fita | **Não**: o `.env` é sempre mantido |
-| Limites dos alertas (geada, calor, chuva, vento...) e recomendações | `regras/clima.yaml` | Sim |
+| Limites dos alertas (geada, calor, chuva, vento, radar...), da pulverização e recomendações | `regras/clima.yaml` | Sim |
 | Plantas do catálogo, fases, Kc e ligação com o ZARC | `regras/plantas.yaml` e `regras/culturas.yaml` | Sim |
 | Como o agente fala e o que ele faz | `perfil.yaml` (identidade) e `skills/clima-lavoura/SKILL.md` | Sim |
 | As imagens que o bot manda | `layouts/` (HTML + CSS) | Sim |
@@ -155,13 +155,23 @@ plantas, histórico), mas **troca todos os outros arquivos** da fita: mudanças 
     - `/plantas`: cada planta com a fase, a colheita estimada e a janela de plantio;
     - `/calendario` e `/plantar`: a **época de plantio no município**, pelo zoneamento oficial, **quando colhe** e quanto
       tempo leva, e o que dá para plantar agora (`/calendario uva, café` mostra só essas; todo mês, junto do primeiro
-      boletim, vai a sugestão do mês);
+      boletim, vai a sugestão do mês). Para as plantas da pessoa, diz se o plantio ficou dentro da janela, o que o risco
+      (20/30/40%) significa e que o Proagro e o seguro com subvenção exigem plantar dentro dela;
     - a **água da semana** de cada planta: quanto ela deve usar (previsão × fase) e quanto a chuva cobre;
     - **alertas** de geada, calor, chuva forte, vento e doença fúngica;
   - recomendações: janela de pulverização, irrigar ou esperar a chuva (balanço de água), colheita, plantio;
   - **chuva hora a hora** até 7 dias ("que horas chove nesta semana?") e **radar** ("a chuva está vindo?"): se está
     chovendo no lugar, a chuva mais perto, para onde ela anda e a que horas deve chegar (até 3 h);
-  - **mensagens automáticas** pedidas na conversa ("me mande o tempo todo dia às 6h", "pare de mandar");
+  - **mensagens automáticas** pedidas na conversa ("me mande o tempo todo dia às 6h", "pare de mandar"), também
+    **em áudio** para quem prefere ouvir (`/audio` liga e desliga; `/ouvir` manda o tempo agora em áudio);
+  - **aviso de chuva chegando** pelo radar: quando a chuva que já existe vem na direção do lugar e deve chegar em até
+    1 h, o bot avisa sozinho ("chuva forte chegando por volta das 15h40, vindo do oeste");
+  - **melhor hora para pulverizar**, hora a hora, com o motivo das horas ruins (vento, calor, ar seco, chuva logo depois)
+    e a próxima janela boa;
+  - **pluviômetro**: `/choveu 18` (ou "choveu 18 mm ontem" na conversa) e a conta de água passa a usar a chuva medida
+    no lugar da estimativa do modelo;
+  - **caderno de campo** pela conversa, inclusive por áudio ("apliquei fungicida no milho hoje", "colhi 40 caixas de
+    tomate"): `/caderno` mostra os últimos 30 dias, com o total colhido;
   - conversa livre ("vai chover no fim de semana?", "o que planto agora na horta?", "plantei milho dia 10"): o agente
     usa as ferramentas da fita, e os números (e a imagem) vêm delas;
   - `/esquecer` apaga o lugar, as plantas, as preferências e as mensagens da pessoa.
@@ -170,8 +180,15 @@ plantas, histórico), mas **troca todos os outros arquivos** da fita: mudanças 
 - **Painel administrativo** (Angular, `http://127.0.0.1:8790`): usuários (convite com QR, aprovar, bloquear), as
   plantas de cada pessoa, as imagens que ela recebe (para baixar), tudo o que foi enviado, gráficos do tempo e mapa.
 
-Ferramentas do agente: `clima_lavoura`, `previsao_periodo`, `chuva_por_hora`, `radar_chuva`, `epoca_de_plantio`,
-`minhas_plantas`, `balanco_agua`, `definir_planta`, `meus_lugares` e `avisos_automaticos`.
+Ferramentas do agente: `clima_lavoura`, `previsao_periodo`, `chuva_por_hora`, `radar_chuva`, `melhor_hora_pulverizar`,
+`epoca_de_plantio`, `minhas_plantas`, `balanco_agua`, `registrar_chuva`, `anotar_caderno`, `ver_caderno`,
+`definir_planta`, `meus_lugares` e `avisos_automaticos`.
+
+Comandos no Telegram: `/start`, `/clima`, `/previsao`, `/plantas`, `/calendario`, `/plantar`, `/lugares`, `/renomear`,
+`/alertas`, `/pausar`, `/voltar`, `/irriguei`, `/choveu`, `/caderno`, `/audio`, `/ouvir` e `/esquecer`.
+
+O áudio usa a voz do K7 (Kokoro na GPU, com o Edge de reserva); sem voz no ar, a mensagem vai só em imagem e texto.
+O aviso de radar segue a regra `chuva_chegando` de `regras/clima.yaml` (minutos de antecedência e força mínima).
 
 ## De onde vêm os dados
 

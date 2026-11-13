@@ -8,6 +8,7 @@ import { Layouts } from '../extensao/Layouts.js';
 import { Notificador } from '../extensao/Notificador.js';
 import type { OpenMeteo, Previsao } from '../extensao/OpenMeteo.js';
 import { culturasDoZarc, lerPlantas } from '../extensao/Plantas.js';
+import type { Radar } from '../extensao/Radar.js';
 import { lerCulturas, lerRegras } from '../extensao/Regras.js';
 import type { Base, Contexto } from '../extensao/Servicos.js';
 import { Zarc } from '../extensao/Zarc.js';
@@ -66,6 +67,9 @@ export class K7Falso {
   readonly rotas: Array<{ metodo: string; caminho: RegExp; handler: (ctx: WebRotaCtx) => Promise<void> | void }> = [];
   /** Simula uma máquina sem Chrome/Edge. */
   semNavegador = false;
+  /** Textos que a fita mandou falar (util.falar); `semVoz` simula a voz fora do ar. */
+  readonly falados: string[] = [];
+  semVoz = false;
   /** Quem o bot não consegue alcançar (ex.: bloqueou o bot). */
   readonly inalcancaveis = new Set<string>();
   acessos: Array<{ userId: number; nome: string; username: string | null; status: 'pendente' | 'ativo' | 'bloqueado'; origem: string; criadoEm: string; ultimoContato: string | null }> = [];
@@ -89,6 +93,11 @@ export class K7Falso {
           if (this.semNavegador) throw new Error('sem Chrome/Edge');
           this.htmls.push(html);
           return PNG_FALSO;
+        },
+        falar: async (texto) => {
+          if (this.semVoz) throw new Error('voz fora do ar');
+          this.falados.push(texto);
+          return { dados: Buffer.from('OggS'), formato: 'ogg' as const };
         },
       },
       processoPrincipal: false,
@@ -247,7 +256,7 @@ export const culturasDaFita = () => lerCulturas(lerYaml(fs.readFileSync(path.joi
 export const plantasDaFita = () => lerPlantas(lerYaml(fs.readFileSync(path.join('regras', 'plantas.yaml'), 'utf8')));
 
 /** A fita montada com o K7 falso, uma previsão fixa no lugar do Open-Meteo e (por padrão) a tábua do ZARC de exemplo. */
-export async function montarFita(previsao: () => Previsao, opcoes: { zarc?: boolean; env?: Record<string, string> } = {}) {
+export async function montarFita(previsao: () => Previsao, opcoes: { zarc?: boolean; env?: Record<string, string>; radar?: Radar } = {}) {
   const k7 = new K7Falso();
   const api = k7.api(opcoes.env);
   const banco = new Banco(api.sql);
@@ -255,6 +264,7 @@ export async function montarFita(previsao: () => Previsao, opcoes: { zarc?: bool
   const zarc = new Zarc(api.sql);
   if (opcoes.zarc !== false) await zarc.importar(emLinhas(tabuaZarc()), culturasDoZarc(plantasDaFita()), { arquivo: 'safra', nome: 'Tábua de risco - Safra 2026/2027', url: 'teste' });
   const base: Base = { k7: api, banco, meteo, zarc, layouts: new Layouts(api), regras: regrasDaFita, culturas: culturasDaFita, plantas: plantasDaFita, nomeDoLugar: async () => ({ nome: 'Goiânia/GO', uf: 'GO' }),
+    ...(opcoes.radar ? { radar: opcoes.radar } : {}),
     buscarLugar: async (t: string) => (/rio verde/i.test(t) ? { cidade: 'Rio Verde/GO', uf: 'GO', lat: -17.79, lon: -50.92 } : undefined),
   };
   const contexto: Contexto = { ...base, notificador: new Notificador(base) };

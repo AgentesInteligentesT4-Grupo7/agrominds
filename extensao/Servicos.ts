@@ -11,6 +11,13 @@ import { type Cultura, type Regra, type Resultado, avaliarTodas } from './Regras
 import { type OpcaoPeriodo, dadosCalendario, dadosPlantas, dadosPrevisao, dadosTempo, periodoDe, textoPrevisao } from './Visual.js';
 import { type Zarc, chaveDeNome } from './Zarc.js';
 
+/** Para o agente explicar o risco e o que o zoneamento muda para seguro e crédito (sem prometer nada). */
+const SOBRE_O_ZARC =
+  'Fonte: ZARC (MAPA/Embrapa). O risco (20%, 30% ou 40%) é a chance de perda por clima (seca, geada, chuva fora de hora) ' +
+  'para quem planta naquela época: 20% é, em média, cerca de 2 anos ruins em cada 10. Fora da janela, o risco é maior que 40%. ' +
+  'O Proagro e o seguro rural com subvenção do governo federal exigem plantar dentro da janela do ZARC do município; ' +
+  'para crédito rural, confirme as exigências com o banco ou a cooperativa.';
+
 /** O que as partes da fita (Telegram, notificações, ferramentas, painel) dividem. */
 export interface Contexto {
   k7: FitaApi;
@@ -81,7 +88,7 @@ export function nomeDe(c: Base): (l: Lavoura) => string {
 
 /** Avalia as regras para tudo o que a pessoa planta. */
 export function avaliar(c: Base, p: Previsao, lavouras: Lavoura[], agora = new Date()): Resultado[] {
-  return avaliarTodas(c.regras(), p, lavouras, c.culturas(), nomeDe(c), agora);
+  return avaliarTodas(c.regras(), p, lavouras, c.culturas(), nomeDe(c), agora, (lugarId) => c.banco.chuvaMedida(lugarId));
 }
 
 export interface Saida {
@@ -198,7 +205,7 @@ export async function calendarioDe(
     ...desconhecidas.map((nome) => ({ planta: chaveDeNome(nome), nome: nome[0]!.toUpperCase() + nome.slice(1), risco: new Array<number>(36).fill(0), semDado: 'fora_do_catalogo' as const, ...(marcar ? { pedida: true } : {}) })),
   ];
   const dados = dadosCalendario(lugar, mostrar, hoje, { titulo, ...(safra ? { safra } : {}), destaque: opcoes.sugerir === true, ...(aviso ? { vazio: aviso } : {}) });
-  const texto = [`📅 ${titulo} · ${lugar.nome}`, '', ...(aviso ? [aviso] : textoCalendario(mostrar)), '', 'Fonte: ZARC (MAPA/Embrapa)'].join('\n');
+  const texto = [`📅 ${titulo} · ${lugar.nome}`, '', ...(aviso ? [aviso] : textoCalendario(mostrar)), '', aviso ? 'Fonte: ZARC (MAPA/Embrapa)' : SOBRE_O_ZARC].join('\n');
   const destaque = dados.destaque ? `\nAgora: ${dados.destaque.agora.join(', ') || 'nada com janela aberta'}` : '';
   return { texto, mensagem: aviso ? texto : await c.layouts.mensagem('calendario', dados, `📅 ${titulo} · ${lugar.nome}${destaque}`, texto) };
 }

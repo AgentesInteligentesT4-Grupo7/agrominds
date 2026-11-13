@@ -29,8 +29,12 @@ export interface FitaApi {
   web: {
     /** Rota da API do chat web. O caminho precisa começar com `/api/x/` (espaço das extensões). */
     rota(metodo: 'GET' | 'POST' | 'DELETE', caminho: RegExp, handler: (ctx: WebRotaCtx) => Promise<void> | void, opcoes?: { visitante?: boolean }): void;
-    /** Script e estilo (arquivos da fita) incluídos na página do chat; o script recebe `window.K7`. */
-    painel(arquivos: { script?: string; estilo?: string }): void;
+    /**
+     * Script e estilo (arquivos da fita) incluídos na página do chat; o script recebe `window.K7`.
+     * `imagens` e `quadros`: endereços https de fora que a página pode mostrar (ex.: miniaturas e o player de vídeo
+     * de um site); sem eles, a página só carrega o que vem do próprio K7.
+     */
+    painel(arquivos: { script?: string; estilo?: string; imagens?: string[]; quadros?: string[] }): void;
   };
   /** Comando de linha de comando: `npm run fita -- <fita> <comando> [args]`. */
   comando(nome: string, descricao: string, executar: (args: string[]) => Promise<void>): void;
@@ -51,6 +55,11 @@ export interface FitaApi {
      * manda o texto no lugar). `largura` em pixels CSS (padrão 720); a altura acompanha o conteúdo.
      */
     htmlParaPng(html: string, opcoes?: { largura?: number; escala?: number }): Promise<Buffer>;
+    /**
+     * Texto em fala, com a voz do K7 (Kokoro na GPU; reserva: Edge). `ogg` (Opus) é o formato de mensagem de voz do
+     * Telegram; `mp3` vai como áudio. Sem nenhum motor de voz no ar, dá erro (a fita manda só o texto).
+     */
+    falar(texto: string): Promise<AudioFalado>;
   };
   /** `true` só no processo principal (o bot): servidores próprios e tarefas da fita rodam só nele. */
   processoPrincipal: boolean;
@@ -86,6 +95,13 @@ export interface TelegramResposta {
   pedirLocalizacao?: string;
   /** Foto (PNG/JPG) com o `texto` de legenda; legenda longa (> 1024) vai numa mensagem logo depois da foto. */
   imagem?: Buffer;
+  /** Áudio logo depois do texto ou da foto (de `util.falar`): `ogg` vira mensagem de voz; `mp3`, um áudio. */
+  audio?: AudioFalado;
+}
+
+export interface AudioFalado {
+  dados: Buffer;
+  formato: 'ogg' | 'mp3';
 }
 
 export interface TelegramCtx {

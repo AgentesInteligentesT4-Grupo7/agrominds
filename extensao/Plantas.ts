@@ -275,6 +275,13 @@ export function textoCalendario(linhas: LinhaCalendario[]): string[] {
       : l.cicloDias && l.colheitaJanela
         ? `; leva ${textoCiclo(l.cicloDias)} até colher: colheita de ${faixas(l.colheitaJanela).map(textoFaixa).join('; ')} (estimativa)`
         : '';
-    return `${nome}: plantar de ${fx.join('; ')}${l.manejo === 'Irrigado' ? ', com irrigação' : ''}${colhe}`;
+    // O plantio que a pessoa contou caiu dentro da janela do zoneamento? (Proagro e seguro dependem disso.)
+    let seu = '';
+    if (l.minha && l.plantio) {
+      const risco = l.risco[decendioDe(l.plantio) - 1] ?? 0;
+      const quando = `${l.plantio.slice(8, 10)}/${l.plantio.slice(5, 7)}`;
+      seu = risco ? `; seu plantio de ${quando} ficou dentro da janela (risco ${risco}%)` : `; seu plantio de ${quando} ficou FORA da janela indicada pelo ZARC`;
+    }
+    return `${nome}: plantar de ${fx.join('; ')}${l.manejo === 'Irrigado' ? ', com irrigação' : ''}${colhe}${seu}`;
   });
 }

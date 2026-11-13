@@ -383,7 +383,8 @@ export class Radar {
   }
 }
 
-const horaMin = (d: Date) => {
+/** "15h40" no horário de Brasília. */
+export const horaMin = (d: Date) => {
   const local = new Date(d.getTime() - 3 * 3600_000);
   const h = local.getUTCHours();
   const m = local.getUTCMinutes();

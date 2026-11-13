@@ -165,7 +165,7 @@ describe('Conversa no Telegram', () => {
     const ana = k7.pessoa('50');
     await ana.toque('agro:modo:alertas');
     await ana.toque('agro:horas:6-12-18');
-    assert.deepEqual(banco.preferencias('50'), { userId: '50', modo: 'alertas', horarios: [6, 12, 18], pausado: false });
+    assert.deepEqual(banco.preferencias('50'), { userId: '50', modo: 'alertas', horarios: [6, 12, 18], pausado: false, audio: false });
     await ana.toque('agro:esquecer:sim');
     assert.equal(banco.lugar('50'), undefined);
     assert.deepEqual(banco.lavouras('50'), []);

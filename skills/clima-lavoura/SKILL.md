@@ -1,7 +1,7 @@
 ---
 name: clima-lavoura
 description: Tempo, época de plantio e manejo pelo clima, para quem planta em qualquer escala (roça, sítio, horta, vaso). Use para perguntas como "vai chover amanhã?", "como fica o fim de semana?", "dá para pulverizar hoje à tarde?", "preciso irrigar?", "tem risco de geada?", "quando planto feijão?", "o que planto agora na horta?", "plantei milho semana passada".
-gatilhos: [chuva, todo dia, diariamente, boletim, avisos, me mande, chover, geada, pulveriz, irrig, clima, tempo amanhã, previsão, fim de semana, colher, colheita, vento, plantei, plantar, plantio, horta, época]
+gatilhos: [chuva, todo dia, diariamente, boletim, avisos, me mande, chover, choveu, pluviômetro, geada, pulveriz, aplicar, apliquei, adubei, irrig, clima, tempo amanhã, previsão, fim de semana, colher, colheita, colhi, caderno, anotar, áudio, vento, plantei, plantar, plantio, horta, época]
 exige_ferramenta: true
 ---
 # Skill: Clima e plantio
@@ -35,9 +35,21 @@ exige_ferramenta: true
    Não invente dicas nem números de manejo.
 10. Se a ferramenta disser que falta a localização, repita o jeito de mandar que ela trouxe (já vem certo para o canal:
     no chat web é o botão 📍, no Telegram o /start). Não explique o outro canal.
-11. Mensagem automática ("me mande o tempo todo dia", "às 6h", "pare de mandar", "volte a mandar"): use
-    `avisos_automaticos` (ligar com `horarios` quando a pessoa disser a hora; pausar; voltar; ver) e confirme em uma
-    frase o que ficou valendo, com o que a ferramenta disser sobre onde a mensagem chega.
+11. Mensagem automática ("me mande o tempo todo dia", "às 6h", "pare de mandar", "volte a mandar", "quero ouvir em
+    áudio"): use `avisos_automaticos` (ligar com `horarios` quando a pessoa disser a hora; pausar; voltar; ver; `audio`
+    para receber também a mensagem de voz) e confirme em uma frase o que ficou valendo, com o que a ferramenta disser
+    sobre onde a mensagem chega. A chuva chegando pelo radar já vai sozinha para quem recebe os alertas.
+12. Hora de pulverizar ("que horas posso pulverizar?", "dá para aplicar amanhã cedo?"): use `melhor_hora_pulverizar`, que
+    traz as boas horas, o motivo das ruins e a próxima janela. Nunca diga produto nem dose.
+13. Pluviômetro ("choveu 18 mm aqui", "deu 5 milímetros ontem"): use `registrar_chuva` com os milímetros e o dia. A medida
+    passa a valer na conta de água no lugar da estimativa do modelo.
+14. Caderno de campo: quando a pessoa contar o que fez ou viu ("apliquei fungicida no milho hoje", "adubei a horta",
+    "irriguei", "colhi 40 caixas de tomate", "vi lagarta na couve"), anote com `anotar_caderno` (uma chamada por
+    anotação, com a quantidade quando ela disser) e confirme em uma frase. Só registre: não comente se o produto ou a
+    dose estão certos. "O que eu apliquei este mês?", "quanto colhi?": `ver_caderno`.
+15. Época de plantio e seguro: quando `epoca_de_plantio` disser que o plantio da pessoa ficou fora da janela, avise com
+    calma que o risco é maior e que o Proagro e o seguro com subvenção exigem plantar dentro da janela; não diga que ela
+    perdeu direito a nada (as regras de cada banco variam).
 
 ## 2. Responder
 - As ferramentas já mandam a imagem com os dados junto da resposta: responda em 2 ou 3 frases, sem repetir tabelas.

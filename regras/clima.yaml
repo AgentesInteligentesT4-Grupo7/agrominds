@@ -8,6 +8,7 @@
 #   alerta  (padrão)  condições sobre a previsão; dispara um aviso com severidade info | atencao | grave
 #   janela            horas do dia em que TODAS as condicoes_hora valem (ex.: pulverizar)
 #   balanco           balanço de água: Σ(ET0 × Kc) − chuva dos últimos dias, contra a chuva prevista (irrigação)
+#   radar             chuva chegando pelo radar meteorológico (aviso automático pelo Telegram, a cada 10 min)
 #
 # Condições (`quando`, todas valem; ou `qualquer`, basta uma):
 #   variavel  temperature_2m, relative_humidity_2m, precipitation, precipitation_probability, wind_speed_10m,
@@ -49,6 +50,20 @@
   grave_se: { operador: ">=", valor: 80 }
   mensagem: "🌧️ Chuva forte prevista: {valor} mm ({quando}). Adie adubação e aplicações; risco de erosão e enxurrada."
   fonte: "Referência inicial: ≥ 20 mm/h ou ≥ 50 mm/24 h"
+  revisado_por: null
+
+# Aviso pelo radar: a chuva que já existe e vem na direção do lugar. Vai pelo Telegram (como os outros alertas) a
+# quem tem o lugar cadastrado; no modo "boletim" e de madrugada (22h às 6h), só quando for grave.
+# Mensagem: {intensidade} (fraca, moderada, forte, muito forte), {hora} (por volta de quando chega), {minutos},
+# {direcao} (de onde ela vem: norte, nordeste...), {velocidade} (km/h).
+- id: chuva_chegando
+  tipo: radar
+  titulo: Chuva chegando (radar)
+  minutos: 60        # avisa quando a chuva deve chegar em até 60 min
+  dbz_minimo: 30     # força mínima no radar: 30 dBZ ≈ chuva moderada (~3 mm/h)
+  grave_dbz: 40      # a partir de 40 dBZ ≈ chuva forte (~12 mm/h), o aviso é grave
+  mensagem: "🌧️ Chuva {intensidade} chegando: pelo radar, deve começar por volta das {hora} (em ~{minutos} min), vindo do {direcao}. Recolha o que estiver secando e não pulverize nem adube agora."
+  fonte: "Radar meteorológico (RainViewer), com o movimento da chuva extrapolado; dBZ → mm/h pela relação de Marshall-Palmer"
   revisado_por: null
 
 - id: vento_forte

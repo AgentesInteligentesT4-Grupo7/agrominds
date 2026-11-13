@@ -55,6 +55,25 @@ export interface Preferencias {
   /** Horas locais do boletim (ex.: [6, 18]). */
   horarios: number[];
   pausado: boolean;
+  /** Boletim e alertas também em áudio (mensagem de voz depois da imagem). */
+  audio: boolean;
+}
+
+/** O que a pessoa anota no caderno de campo (pela conversa, inclusive por áudio). */
+export type TipoAnotacao = 'aplicacao' | 'adubacao' | 'irrigacao' | 'plantio' | 'colheita' | 'chuva' | 'observacao' | 'outro';
+
+export interface Anotacao {
+  id: number;
+  userId: string;
+  lugarId: number;
+  /** Dia do que aconteceu (AAAA-MM-DD), não o da anotação. */
+  dia: string;
+  tipo: TipoAnotacao;
+  texto: string;
+  planta: string | null;
+  quantidade: number | null;
+  unidade: string | null;
+  registradoEm: string;
 }
 
 export interface Envio {
@@ -85,6 +104,16 @@ const SCHEMA = `
     user_id TEXT PRIMARY KEY, modo TEXT NOT NULL DEFAULT 'boletim', horarios TEXT NOT NULL DEFAULT '[6,18]',
     pausado INTEGER NOT NULL DEFAULT 0
   );
+  CREATE TABLE IF NOT EXISTS chuva_medida (
+    lugar_id INTEGER NOT NULL, dia TEXT NOT NULL, user_id TEXT NOT NULL, mm REAL NOT NULL,
+    registrado_em TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (lugar_id, dia)
+  );
+  CREATE TABLE IF NOT EXISTS caderno (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, lugar_id INTEGER NOT NULL, dia TEXT NOT NULL,
+    tipo TEXT NOT NULL, texto TEXT NOT NULL, planta TEXT, quantidade REAL, unidade TEXT,
+    registrado_em TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_caderno_lugar ON caderno (user_id, lugar_id, dia);
   CREATE TABLE IF NOT EXISTS envios (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, quando TEXT NOT NULL DEFAULT (datetime('now')),
     tipo TEXT NOT NULL, regras TEXT NOT NULL DEFAULT '[]', severidade TEXT, texto TEXT NOT NULL,
@@ -125,6 +154,7 @@ export class Banco {
     if (v2) sql.exec('ALTER TABLE lavouras RENAME TO lavouras_v2');
     if (umLugar) sql.exec('ALTER TABLE lugares RENAME TO lugares_v1');
     sql.exec(SCHEMA);
+    if (!colunas('preferencias').includes('audio')) sql.exec('ALTER TABLE preferencias ADD COLUMN audio INTEGER NOT NULL DEFAULT 0');
     sql.transacao(() => {
       if (umLugar) {
         const uf = lugares.includes('uf') ? 'uf' : 'NULL';
@@ -206,6 +236,8 @@ export class Banco {
     if (!era) return false;
     this.sql.transacao(() => {
       this.sql.run('DELETE FROM lavouras WHERE user_id = ? AND lugar_id = ?', userId, id);
+      this.sql.run('DELETE FROM chuva_medida WHERE user_id = ? AND lugar_id = ?', userId, id);
+      this.sql.run('DELETE FROM caderno WHERE user_id = ? AND lugar_id = ?', userId, id);
       this.sql.run('DELETE FROM lugares WHERE user_id = ? AND id = ?', userId, id);
     });
     const resto = this.lugaresDe(userId).at(-1);
@@ -267,19 +299,67 @@ export class Banco {
   }
 
   preferencias(userId: string): Preferencias {
-    const r = this.sql.get<{ modo: ModoEnvio; horarios: string; pausado: number }>('SELECT * FROM preferencias WHERE user_id = ?', userId);
-    return { userId, modo: r?.modo ?? 'boletim', horarios: r ? (JSON.parse(r.horarios) as number[]) : [6, 18], pausado: r?.pausado === 1 };
+    const r = this.sql.get<{ modo: ModoEnvio; horarios: string; pausado: number; audio: number }>('SELECT * FROM preferencias WHERE user_id = ?', userId);
+    return { userId, modo: r?.modo ?? 'boletim', horarios: r ? (JSON.parse(r.horarios) as number[]) : [6, 18], pausado: r?.pausado === 1, audio: r?.audio === 1 };
   }
 
   salvarPreferencias(userId: string, dados: Partial<Omit<Preferencias, 'userId'>>): Preferencias {
     const atual = this.preferencias(userId);
     const p = { ...atual, ...dados };
     this.sql.run(
-      `INSERT INTO preferencias (user_id, modo, horarios, pausado) VALUES (?, ?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET modo = excluded.modo, horarios = excluded.horarios, pausado = excluded.pausado`,
-      userId, p.modo, JSON.stringify(p.horarios), p.pausado ? 1 : 0,
+      `INSERT INTO preferencias (user_id, modo, horarios, pausado, audio) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET modo = excluded.modo, horarios = excluded.horarios, pausado = excluded.pausado,
+         audio = excluded.audio`,
+      userId, p.modo, JSON.stringify(p.horarios), p.pausado ? 1 : 0, p.audio ? 1 : 0,
     );
     return this.preferencias(userId);
+  }
+
+  /** Chuva do pluviômetro da pessoa num dia (substitui a estimativa do modelo nesse dia); mm < 0 apaga. */
+  registrarChuva(userId: string, lugarId: number, dia: string, mm: number): void {
+    if (mm < 0) return void this.sql.run('DELETE FROM chuva_medida WHERE user_id = ? AND lugar_id = ? AND dia = ?', userId, lugarId, dia);
+    this.sql.run(
+      `INSERT INTO chuva_medida (lugar_id, dia, user_id, mm) VALUES (?, ?, ?, ?)
+       ON CONFLICT(lugar_id, dia) DO UPDATE SET mm = excluded.mm, registrado_em = datetime('now')`,
+      lugarId, dia, userId, Math.round(mm * 10) / 10,
+    );
+  }
+
+  /** Chuva medida num lugar a partir de `desde` (AAAA-MM-DD): { dia: mm }. */
+  chuvaMedida(lugarId: number, desde = '0000-00-00'): Record<string, number> {
+    const linhas = this.sql.all<{ dia: string; mm: number }>('SELECT dia, mm FROM chuva_medida WHERE lugar_id = ? AND dia >= ? ORDER BY dia', lugarId, desde);
+    return Object.fromEntries(linhas.map((l) => [l.dia, l.mm]));
+  }
+
+  anotar(a: Omit<Anotacao, 'id' | 'registradoEm'>): Anotacao {
+    const id = Number(
+      this.sql.run(
+        'INSERT INTO caderno (user_id, lugar_id, dia, tipo, texto, planta, quantidade, unidade) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        a.userId, a.lugarId, a.dia, a.tipo, a.texto.trim().slice(0, 500), a.planta, a.quantidade, a.unidade?.trim().slice(0, 20) || null,
+      ).lastInsertRowid,
+    );
+    return this.caderno(a.userId, { lugarId: a.lugarId, id })[0]!;
+  }
+
+  /** Anotações do caderno, as mais recentes primeiro. */
+  caderno(userId: string, filtro: { lugarId?: number; desde?: string; tipo?: TipoAnotacao; planta?: string; id?: number; limite?: number } = {}): Anotacao[] {
+    const where = ['user_id = ?'];
+    const params: unknown[] = [userId];
+    if (filtro.lugarId !== undefined) where.push('lugar_id = ?') && params.push(filtro.lugarId);
+    if (filtro.desde) where.push('dia >= ?') && params.push(filtro.desde);
+    if (filtro.tipo) where.push('tipo = ?') && params.push(filtro.tipo);
+    if (filtro.planta) where.push('planta = ?') && params.push(filtro.planta);
+    if (filtro.id !== undefined) where.push('id = ?') && params.push(filtro.id);
+    const linhas = this.sql.all<{ id: number; user_id: string; lugar_id: number; dia: string; tipo: TipoAnotacao; texto: string; planta: string | null; quantidade: number | null; unidade: string | null; registrado_em: string }>(
+      `SELECT * FROM caderno WHERE ${where.join(' AND ')} ORDER BY dia DESC, id DESC LIMIT ?`,
+      ...params,
+      Math.min(500, filtro.limite ?? 50),
+    );
+    return linhas.map((r) => ({ id: r.id, userId: r.user_id, lugarId: r.lugar_id, dia: r.dia, tipo: r.tipo, texto: r.texto, planta: r.planta, quantidade: r.quantidade, unidade: r.unidade, registradoEm: r.registrado_em }));
+  }
+
+  apagarAnotacao(userId: string, id: number): boolean {
+    return this.sql.run('DELETE FROM caderno WHERE user_id = ? AND id = ?', userId, id).changes > 0;
   }
 
   registrarEnvio(e: Omit<Envio, 'id' | 'quando'>): void {
@@ -322,7 +402,7 @@ export class Banco {
   /** `/esquecer`: apaga tudo da pessoa nesta fita. */
   esquecer(userId: string): void {
     this.sql.transacao(() => {
-      for (const tabela of ['lugares', 'lavouras', 'preferencias', 'envios', 'avisados']) this.sql.run(`DELETE FROM ${tabela} WHERE user_id = ?`, userId);
+      for (const tabela of ['lugares', 'lavouras', 'preferencias', 'envios', 'avisados', 'chuva_medida', 'caderno']) this.sql.run(`DELETE FROM ${tabela} WHERE user_id = ?`, userId);
     });
   }
 

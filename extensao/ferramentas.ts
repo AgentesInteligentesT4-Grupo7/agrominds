@@ -1,5 +1,7 @@
 import { UserFacingError } from './erros.js';
 import type { ModoEnvio } from './Banco.js';
+import { TIPOS, diaDe, ehTipo, linhaDaAnotacao, textoCaderno } from './Caderno.js';
+import { horasDePulverizar, textoPulverizacao } from './Pulverizacao.js';
 import type { FitaTool, FitaToolCtx, TelegramResposta } from './k7.js';
 import { textoChuvaPorHora } from './Chuva.js';
 import { textoRadar } from './Radar.js';
@@ -150,18 +152,23 @@ export function registrarFerramentas(c: Contexto): void {
       if (!todas.length) throw new UserFacingError('A pessoa ainda não disse o que planta: peça para usar /plantas.');
       const escolhidas = typeof args.planta === 'string' ? todas.filter((l) => l.planta === args.planta) : todas.some((l) => l.irrigada) ? todas.filter((l) => l.irrigada) : todas;
       const p = await c.meteo.previsao(lugar.celula);
+      const medida = c.banco.chuvaMedida(lugar.id);
+      const dias = Object.keys(medida).length;
       return [
         ...escolhidas.flatMap((l) => {
           const cultura = c.culturas().find((x) => x.id === l.cultura);
           const kc = cultura?.fases[l.fase]?.kc ?? 1;
-          const b = balancoHidrico(p, kc, 7, 2, l.irrigouEm);
+          const b = balancoHidrico(p, kc, 7, 2, l.irrigouEm, new Date(), medida);
           const nome = c.plantas().find((x) => x.id === l.planta)?.nome ?? l.planta;
           const semana = aguaDaSemana(p, kc);
           return [
-            `${nome}: fase ${cultura?.fases[l.fase]?.nome ?? l.fase} (Kc ${kc}), ${l.irrigada ? 'irrigada' : 'sem irrigação'} · déficit ${b.deficit} mm em 7 dias · chuva prevista em 2 dias ${b.chuvaPrevista} mm`,
+            `${nome}: fase ${cultura?.fases[l.fase]?.nome ?? l.fase} (Kc ${kc}), ${l.irrigada ? 'irrigada' : 'sem irrigação'} · déficit ${b.deficit} mm em 7 dias${b.medidos ? ` (chuva do pluviômetro em ${b.medidos} dia(s))` : ''} · chuva prevista em 2 dias ${b.chuvaPrevista} mm`,
             `  Próximos 7 dias: deve usar ~${semana.usa} mm (litros por m²), chuva prevista ${semana.chuva} mm, faltam ~${semana.falta} mm`,
           ];
         }),
+        dias
+          ? 'A chuva que já caiu usa o pluviômetro da pessoa nos dias que ela informou; nos outros, a estimativa do modelo.'
+          : 'A chuva que já caiu é estimada pelo modelo: se a pessoa tiver pluviômetro, ela pode dizer quanto choveu ("choveu 18 mm ontem") e a conta fica mais certa.',
         'Valores de referência (regras em revisão por agrônomo); não substituem a avaliação no local.',
       ].join('\n');
     },
@@ -208,6 +215,136 @@ export function registrarFerramentas(c: Contexto): void {
   });
 
   k7.ferramenta(avisosAutomaticos(c));
+
+  k7.ferramenta({
+    name: 'melhor_hora_pulverizar',
+    description:
+      'A melhor hora para pulverizar hoje e nos próximos dias, hora a hora, com o motivo das horas ruins (vento, calor, ar seco, ' +
+      'chuva logo depois) e a próxima janela boa. Use para "que horas posso pulverizar?", "dá para aplicar amanhã de manhã?". ' +
+      'Nunca indique produto nem dose.',
+    parameters: {
+      type: 'object',
+      properties: { dias: { type: 'integer', description: 'Quantos dias olhar, de 1 a 3 (padrão 2: hoje e amanhã)' }, lugar: LUGAR },
+      additionalProperties: false,
+    },
+    async run(args, ctx) {
+      const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
+      const regra = c.regras().find((r) => r.id === 'pulverizacao') ?? c.regras().find((r) => r.tipo === 'janela');
+      if (!regra) throw new UserFacingError('A regra de pulverização não está em regras/clima.yaml.');
+      const dias = typeof args.dias === 'number' ? Math.min(3, Math.max(1, Math.round(args.dias))) : 2;
+      const p = await c.meteo.previsao(lugar.celula);
+      const agora = new Date();
+      return textoPulverizacao(horasDePulverizar(p, regra, agora, dias), regra, lugar.nome, p, agora, dias);
+    },
+  });
+
+  k7.ferramenta({
+    name: 'registrar_chuva',
+    description:
+      'Registra a chuva que a pessoa mediu no pluviômetro ("choveu 18 mm ontem", "deu 5 milímetros hoje"). Passa a valer no lugar da ' +
+      'estimativa do modelo na conta de água (irrigação) daquele dia, e fica no caderno de campo. mm negativo apaga o registro do dia.',
+    parameters: {
+      type: 'object',
+      properties: {
+        mm: { type: 'number', description: 'Milímetros medidos (1 mm = 1 litro por m²)' },
+        dia: { type: 'string', description: 'hoje (padrão), ontem, anteontem, AAAA-MM-DD ou DD/MM' },
+        lugar: LUGAR,
+      },
+      required: ['mm'],
+      additionalProperties: false,
+    },
+    async run(args, ctx) {
+      const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
+      const mm = Number(args.mm);
+      if (!Number.isFinite(mm) || mm > 400) throw new UserFacingError('Quantidade de chuva inválida: informe os milímetros do pluviômetro (de 0 a 400).');
+      const dia = diaDe(args.dia, hojeLocal());
+      if (!dia) throw new UserFacingError('Não entendi o dia: use hoje, ontem, anteontem ou a data (DD/MM), de até um ano atrás.');
+      banco.registrarChuva(lugar.userId, lugar.id, dia, mm);
+      if (mm < 0) return `ok: apagada a chuva medida de ${dia} em ${lugar.nome}; nesse dia volta a valer a estimativa do modelo.`;
+      banco.anotar({ userId: lugar.userId, lugarId: lugar.id, dia, tipo: 'chuva', texto: 'pluviômetro', planta: null, quantidade: mm, unidade: 'mm' });
+      return (
+        `ok: ${String(mm).replace('.', ',')} mm em ${dia} anotados em ${lugar.nome}. A conta de água (irrigação) passa a usar essa medida ` +
+        'nesse dia, no lugar da estimativa do modelo. Confirme em uma frase.'
+      );
+    },
+  });
+
+  k7.ferramenta({
+    name: 'anotar_caderno',
+    description:
+      'Anota no caderno de campo o que a pessoa fez ou viu na roça, quando ela contar (inclusive por áudio): aplicação, adubação, ' +
+      'irrigação, plantio, colheita, observação ("apliquei fungicida no milho hoje", "adubei a horta ontem", "colhi 40 caixas de tomate", ' +
+      '"vi lagarta na couve"). Uma chamada por anotação. Só registra: não recomende produto nem dose.',
+    parameters: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'O que foi feito, nas palavras da pessoa, curto ("fungicida no talhão 2", "lagarta nas folhas")' },
+        tipo: { type: 'string', enum: Object.keys(TIPOS), description: 'aplicacao, adubacao, irrigacao, plantio, colheita, chuva, observacao ou outro' },
+        dia: { type: 'string', description: 'Quando aconteceu: hoje (padrão), ontem, anteontem, AAAA-MM-DD ou DD/MM' },
+        planta: { type: 'string', enum: idsPlantas(), description: 'Planta, quando a pessoa disser' },
+        quantidade: { type: 'number', description: 'Quantidade, quando houver (40 caixas, 2 sacos, 300 litros)' },
+        unidade: { type: 'string', description: 'Unidade da quantidade (caixas, kg, sacos, litros, mm)' },
+        lugar: LUGAR,
+      },
+      required: ['texto', 'tipo'],
+      additionalProperties: false,
+    },
+    async run(args, ctx) {
+      const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
+      if (!ehTipo(args.tipo)) throw new UserFacingError('Tipo de anotação inválido.');
+      const texto = String(args.texto ?? '').trim();
+      if (!texto) throw new UserFacingError('Faltou dizer o que foi feito.');
+      const hoje = hojeLocal();
+      const dia = diaDe(args.dia, hoje);
+      if (!dia) throw new UserFacingError('Não entendi o dia: use hoje, ontem, anteontem ou a data (DD/MM), de até um ano atrás.');
+      const planta = typeof args.planta === 'string' && c.plantas().some((p) => p.id === args.planta) ? args.planta : null;
+      const quantidade = typeof args.quantidade === 'number' && Number.isFinite(args.quantidade) ? args.quantidade : null;
+      const unidade = typeof args.unidade === 'string' ? args.unidade : null;
+      const a = banco.anotar({ userId: lugar.userId, lugarId: lugar.id, dia, tipo: args.tipo, texto, planta, quantidade, unidade });
+      const extras: string[] = [];
+      // Irrigação de hoje ou de ontem zera a conta de água (como o /irriguei).
+      if (args.tipo === 'irrigacao' && dia >= somarDias(hoje, -1)) {
+        banco.irrigou(lugar.userId, planta ?? undefined, lugar.id);
+        extras.push('a conta de água das plantas irrigadas recomeçou');
+      }
+      if (args.tipo === 'chuva' && quantidade !== null && /^mm|mil[ií]metros?$/i.test(unidade ?? 'mm')) {
+        banco.registrarChuva(lugar.userId, lugar.id, dia, quantidade);
+        extras.push('a chuva medida passa a valer na conta de água desse dia');
+      }
+      const nome = (id: string) => c.plantas().find((p) => p.id === id)?.nome ?? id;
+      return `ok: anotado no caderno de ${lugar.nome}: ${linhaDaAnotacao(a, nome).slice(2)}${extras.length ? ` (${extras.join('; ')})` : ''}. Confirme em uma frase.`;
+    },
+  });
+
+  k7.ferramenta({
+    name: 'ver_caderno',
+    description:
+      'O caderno de campo da pessoa: o que ela anotou (aplicações, adubações, irrigações, colheitas, chuva medida, observações), ' +
+      'com um resumo e o total colhido. Use para "o que eu apliquei este mês?", "quando adubei?", "quanto colhi de tomate?".',
+    parameters: {
+      type: 'object',
+      properties: {
+        dias: { type: 'integer', description: 'Quantos dias para trás (padrão 30, até 366)' },
+        tipo: { type: 'string', enum: Object.keys(TIPOS), description: 'Só um tipo de anotação' },
+        planta: { type: 'string', enum: idsPlantas(), description: 'Só uma planta' },
+        lugar: LUGAR,
+      },
+      additionalProperties: false,
+    },
+    async run(args, ctx) {
+      const lugar = lugarOuErro(c, ctx.userId, lugarDe(args, ctx.userId));
+      const dias = typeof args.dias === 'number' ? Math.min(366, Math.max(1, Math.round(args.dias))) : 30;
+      const anotacoes = banco.caderno(lugar.userId, {
+        lugarId: lugar.id,
+        desde: somarDias(hojeLocal(), -dias),
+        ...(ehTipo(args.tipo) ? { tipo: args.tipo } : {}),
+        ...(typeof args.planta === 'string' ? { planta: args.planta } : {}),
+        limite: 500,
+      });
+      const nome = (id: string) => c.plantas().find((p) => p.id === id)?.nome ?? id;
+      return textoCaderno(anotacoes, lugar.nome, dias, nome);
+    },
+  });
 
   k7.ferramenta({
     name: 'meus_lugares',
@@ -259,6 +396,7 @@ export function avisosAutomaticos(c: Contexto): FitaTool {
           enum: ['boletim', 'hora', 'alertas', 'pedir'],
           description: 'boletim (padrão: boletim nos horários e alerta grave na hora), hora (também todo alerta novo), alertas (só alertas), pedir (nada automático).',
         },
+        audio: { type: 'boolean', description: 'true: boletim e alertas também em áudio (mensagem de voz); false: só imagem e texto. Sem pedido, não passe.' },
       },
       required: ['acao'],
       additionalProperties: false,
@@ -286,12 +424,14 @@ export function avisosAutomaticos(c: Contexto): FitaTool {
         const modo = typeof args.modo === 'string' && args.modo in MODOS_AVISO ? (args.modo as ModoEnvio) : atual.modo === 'pedir' ? 'boletim' : atual.modo;
         banco.salvarPreferencias(userId, { modo, pausado: false, ...(lista.length ? { horarios: lista } : {}) });
       }
+      if (typeof args.audio === 'boolean') banco.salvarPreferencias(userId, { audio: args.audio });
       const p = banco.preferencias(userId);
       const comBoletim = p.modo === 'boletim' || p.modo === 'hora';
       return [
         `ok: ${p.pausado ? 'PAUSADO (nada é enviado até a pessoa pedir para voltar)' : MODOS_AVISO[p.modo]}` +
-          `${comBoletim && !p.pausado ? `, todo dia às ${horas(p.horarios)} (hora de ${lugar.nome})` : ''}.`,
-        'Entre 22h e 6h só vão alertas graves. Para mudar pelos botões: /alertas; parar: /pausar.',
+          `${comBoletim && !p.pausado ? `, todo dia às ${horas(p.horarios)} (hora de ${lugar.nome})` : ''}` +
+          `${p.audio ? ', também em áudio (mensagem de voz)' : ''}.`,
+        'Entre 22h e 6h só vão alertas graves. Para mudar pelos botões: /alertas; parar: /pausar; áudio: /audio.',
         'Confirme em uma frase o que ficou valendo.',
       ].join('\n');
     },
